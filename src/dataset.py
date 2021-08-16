@@ -103,37 +103,44 @@ class ShinraData(object):
                 f.write("\n".join(attributes))
 
         docs = []
-        for token_file in tqdm(input_path.glob("tokens/*.txt")):
-            page_id = int(token_file.stem)
-            tokens, text_offsets = load_tokens(token_file, vocab)
-            valid_line_ids = [idx for idx, token in enumerate(tokens) if len(token) > 0]
+        for token_file in tqdm(
+            input_path.glob("tokens/*.txt"),
+            total=len([token for token in input_path.glob("tokens/*.txt")]),
+        ):
+            try:
+                page_id = int(token_file.stem)
+                tokens, text_offsets = load_tokens(token_file, vocab)
+                valid_line_ids = [
+                    idx for idx, token in enumerate(tokens) if len(token) > 0
+                ]
 
-            # find title
-            title = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
-            pos = title.find("-jawiki")
-            title = title[:pos]
+                # find title
+                title = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
+                pos = title.find("-jawiki")
+                title = title[:pos]
 
-            # find word alignments = start positions of words
-            word_alignments = [find_word_alignment(t) for t in tokens]
-            sub2word = [w[1] for w in word_alignments]
-            word_alignments = [w[0] for w in word_alignments]
+                # find word alignments = start positions of words
+                word_alignments = [find_word_alignment(t) for t in tokens]
+                sub2word = [w[1] for w in word_alignments]
+                word_alignments = [w[0] for w in word_alignments]
 
-            data = {
-                "page_id": page_id,
-                "page_title": title,
-                "category": category,
-                "tokens": tokens,
-                "text_offsets": text_offsets,
-                "word_alignments": word_alignments,
-                "sub2word": sub2word,
-                "valid_line_ids": valid_line_ids,
-            }
+                data = {
+                    "page_id": page_id,
+                    "page_title": title,
+                    "category": category,
+                    "tokens": tokens,
+                    "text_offsets": text_offsets,
+                    "word_alignments": word_alignments,
+                    "sub2word": sub2word,
+                    "valid_line_ids": valid_line_ids,
+                }
 
-            if page_id in anns:
-                data["nes"] = anns[page_id]
+                if page_id in anns:
+                    data["nes"] = anns[page_id]
 
-            docs.append(cls(attributes, params=data))
-
+                docs.append(cls(attributes, params=data))
+            except:
+                pass
         return docs
 
     # iobs = [sents1, sents2, ...]
