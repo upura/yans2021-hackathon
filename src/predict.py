@@ -1,16 +1,16 @@
 import argparse
 import json
-from pathlib import Path
 
+import joblib
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 
-from dataset import NerDataset, ShinraData, ner_collate_fn
+from dataset import NerDataset, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 
-device = "cuda:1" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def ner_for_shinradata(model, tokenizer, shinra_dataset, device):
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
     # dataset = [ShinraData(), ....]
-    dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
+    dataset = joblib.load("dataset.pkl")
     dataset = [d for idx, d in enumerate(dataset) if idx < 20 and d.nes is not None]
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes))
