@@ -1,6 +1,8 @@
 import argparse
+import os
 from pathlib import Path
 
+import joblib
 import mlflow
 import torch
 import torch.optim as optim
@@ -160,8 +162,12 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
     # dataset = [ShinraData(), ....]
-    dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
-    dataset = [d for d in dataset if d.nes is not None]
+    if os.path.exists("dataset.pkl"):
+        dataset = joblib.load("dataset.pkl")
+    else:
+        dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
+        dataset = [d for d in dataset if d.nes is not None]
+        joblib.dump(dataset, "dataset.pkl", compress=3)
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes)).to(device)
     train_dataset, valid_dataset = train_test_split(dataset, test_size=0.1)
