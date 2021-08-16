@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-from transformers import AutoModel
-import numpy as np
 
 
 def create_pooler_matrix(input_ids, word_idxs, pool_type="head"):
@@ -10,16 +8,23 @@ def create_pooler_matrix(input_ids, word_idxs, pool_type="head"):
     pooler_matrix = torch.zeros(bsz * max_word_len * subword_len)
 
     if pool_type == "head":
-        pooler_idxs = [subword_len * max_word_len * batch_offset +  subword_len * word_offset + w
-            for batch_offset, word_idx in enumerate(word_idxs) for word_offset, w in enumerate(word_idx[:-1])]
+        pooler_idxs = [
+            subword_len * max_word_len * batch_offset + subword_len * word_offset + w
+            for batch_offset, word_idx in enumerate(word_idxs)
+            for word_offset, w in enumerate(word_idx[:-1])
+        ]
         pooler_matrix.scatter_(0, torch.LongTensor(pooler_idxs), 1)
         return pooler_matrix.view(bsz, max_word_len, subword_len)
 
     elif pool_type == "average":
-        pooler_idxs = [subword_len * max_word_len * batch_offset +  subword_len * word_offset + w / (word_idx[word_offset+1] - word_idx[word_offset])
+        pooler_idxs = [
+            subword_len * max_word_len * batch_offset
+            + subword_len * word_offset
+            + w / (word_idx[word_offset + 1] - word_idx[word_offset])
             for batch_offset, word_idx in enumerate(word_idxs)
             for word_offset, _ in enumerate(word_idx[:-1])
-            for w in range(word_idx[word_offset], word_idx[word_offset+1])]
+            for w in range(word_idx[word_offset], word_idx[word_offset + 1])
+        ]
         pooler_matrix.scatter_(0, torch.LongTensor(pooler_idxs), 1)
         return pooler_matrix.view(bsz, max_word_len, subword_len)
 
@@ -40,7 +45,6 @@ class BertForMultilabelNER(nn.Module):
         classifiers = [nn.Linear(768, 3) for i in range(attribute_num)]
         self.classifiers = nn.ModuleList(classifiers)
 
-
     def predict(
         self,
         input_ids=None,
@@ -51,14 +55,20 @@ class BertForMultilabelNER(nn.Module):
         logits = self.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            pooling_matrix=pooling_matrix)[0]
-        #labels = [torch.argmax(logit.detach().cpu(), dim=-1) for logit in logits]
+            pooling_matrix=pooling_matrix,
+        )[0]
+        # labels = [torch.argmax(logit.detach().cpu(), dim=-1) for logit in logits]
         labels = [self.viterbi(logit.detach().cpu()) for logit in logits]
 
-        truncated_labels = [[label[:len(word_idx)-1] for label, word_idx in zip(attr_labels, word_idxs)] for attr_labels in labels]
+        truncated_labels = [
+            [
+                label[: len(word_idx) - 1]
+                for label, word_idx in zip(attr_labels, word_idxs)
+            ]
+            for attr_labels in labels
+        ]
 
         return truncated_labels
-
 
     def forward(
         self,
@@ -85,10 +95,10 @@ class BertForMultilabelNER(nn.Module):
             for label, logit in zip(labels, logits):
                 loss += loss_fct(logit.view(-1, 3), label.view(-1)) / len(labels)
 
-        output = (logits, ) + outputs[2:]
+        output = (logits,) + outputs[2:]
         return ((loss,) + output) if loss is not None else output
 
-    def viterbi(self, logits, penalty=float('inf')):
+    def viterbi(self, logits, penalty=float("inf")):
         num_tags = 3
 
         # 0: O, 1: B, 2: I

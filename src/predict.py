@@ -1,19 +1,14 @@
 import argparse
-import sys
-from pathlib import Path
 import json
+from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
-import torch.optim as optim
-from transformers import AutoTokenizer, AutoModel
-from tqdm import tqdm
+from torch.utils.data import DataLoader
+from transformers import AutoModel, AutoTokenizer
 
-from dataset import ShinraData, NerDataset, ner_collate_fn
+from dataset import NerDataset, ShinraData, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
-
-import os
 
 device = "cuda:1" if torch.cuda.is_available() else "cpu"
 
@@ -41,15 +36,19 @@ def predict(model, dataset, device, sent_wise=False):
 
             labels = inputs["labels"]
 
-            input_ids = pad_sequence([torch.tensor(t) for t in input_ids], padding_value=0, batch_first=True).to(device)
+            input_ids = pad_sequence(
+                [torch.tensor(t) for t in input_ids], padding_value=0, batch_first=True
+            ).to(device)
             attention_mask = input_ids > 0
-            pooling_matrix = create_pooler_matrix(input_ids, word_idxs, pool_type="head").to(device)
+            pooling_matrix = create_pooler_matrix(
+                input_ids, word_idxs, pool_type="head"
+            ).to(device)
 
             preds = model.predict(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 word_idxs=word_idxs,
-                pooling_matrix=pooling_matrix
+                pooling_matrix=pooling_matrix,
             )
 
             total_preds.append(preds)
@@ -57,12 +56,24 @@ def predict(model, dataset, device, sent_wise=False):
             total_trues.append(labels if labels[0] is not None else preds)
 
     attr_num = len(total_preds[0])
-    total_preds = [[pred for preds in total_preds for pred in preds[attr]] for attr in range(attr_num)]
-    total_trues = [[true for trues in total_trues for true in trues[attr]] for attr in range(attr_num)]
+    total_preds = [
+        [pred for preds in total_preds for pred in preds[attr]]
+        for attr in range(attr_num)
+    ]
+    total_trues = [
+        [true for trues in total_trues for true in trues[attr]]
+        for attr in range(attr_num)
+    ]
 
     if sent_wise:
-        total_preds = [[total_preds[attr][idx] for attr in range(attr_num)] for idx in range(len(total_preds[0]))]
-        total_trues = [[total_trues[attr][idx] for attr in range(attr_num)] for idx in range(len(total_trues[0]))]
+        total_preds = [
+            [total_preds[attr][idx] for attr in range(attr_num)]
+            for idx in range(len(total_preds[0]))
+        ]
+        total_trues = [
+            [total_trues[attr][idx] for attr in range(attr_num)]
+            for idx in range(len(total_trues[0]))
+        ]
 
     return total_preds, total_trues
 
@@ -70,9 +81,15 @@ def predict(model, dataset, device, sent_wise=False):
 def parse_arg():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--input_path", type=str, help="Specify input path in SHINRA2020")
-    parser.add_argument("--model_path", type=str, help="Specify attribute_list path in SHINRA2020")
-    parser.add_argument("--output_path", type=str, help="Specify attribute_list path in SHINRA2020")
+    parser.add_argument(
+        "--input_path", type=str, help="Specify input path in SHINRA2020"
+    )
+    parser.add_argument(
+        "--model_path", type=str, help="Specify attribute_list path in SHINRA2020"
+    )
+    parser.add_argument(
+        "--output_path", type=str, help="Specify attribute_list path in SHINRA2020"
+    )
 
     args = parser.parse_args()
 
@@ -95,4 +112,8 @@ if __name__ == "__main__":
 
     dataset = [ner_for_shinradata(model, tokenizer, d, device) for d in dataset]
     with open(args.output_path, "w") as f:
-        f.write("\n".join([json.dumps(ne, ensure_ascii=False) for d in dataset for ne in d.nes]))
+        f.write(
+            "\n".join(
+                [json.dumps(ne, ensure_ascii=False) for d in dataset for ne in d.nes]
+            )
+        )

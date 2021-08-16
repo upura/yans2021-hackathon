@@ -1,14 +1,13 @@
 import json
 from collections import defaultdict
 from pathlib import Path
-import pickle
-import json
 
+from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from torch.utils.data import Dataset, DataLoader
 
-from util import decode_iob, is_chunk_start, is_chunk_end
+from util import is_chunk_end, is_chunk_start
+
 
 def load_tokens(path, vocab):
     tokens = []
@@ -83,9 +82,7 @@ class ShinraData(object):
             setattr(self, key, value)
 
     @classmethod
-    def from_shinra2020_format(
-        cls,
-        input_path=None):
+    def from_shinra2020_format(cls, input_path=None):
 
         input_path = Path(input_path)
         category = input_path.stem
@@ -96,7 +93,7 @@ class ShinraData(object):
         # create attributes
         if (input_path / "attributes.txt").exists():
             with open(input_path / "attributes.txt", "r") as f:
-                attributes = [attr for attr in f.read().split("\n") if attr != '']
+                attributes = [attr for attr in f.read().split("\n") if attr != ""]
         else:
             attributes = set()
             for page_id, ann in anns.items():
@@ -142,7 +139,9 @@ class ShinraData(object):
     # iobs = [sents1, sents2, ...]
     # sents1 = [[iob1_attr1, iob2_attr1, ...], [iob1_attr2, iob2_attr2, ...], ...]
     def add_nes_from_iob(self, iobs):
-        assert len(iobs) == len(self.valid_line_ids), f"{len(iobs)}, {len(self.valid_line_ids)}"
+        assert len(iobs) == len(
+            self.valid_line_ids
+        ), f"{len(iobs)}, {len(self.valid_line_ids)}"
         self.nes = []
 
         for line_id, sent_iob in zip(self.valid_line_ids, iobs):
@@ -153,20 +152,30 @@ class ShinraData(object):
                 ne = {}
                 iob = [0] + iob + [0]
                 for token_idx in range(1, len(iob)):
-                    if is_chunk_end(iob[token_idx-1], iob[token_idx]):
+                    if is_chunk_end(iob[token_idx - 1], iob[token_idx]):
                         assert ne != {}
                         # token_idxは本来のものから+2されているので，word2subwordはneの外のはじめのtoken_id
-                        end_offset = len(tokens) if token_idx - 1 >= len(word2subword) else word2subword[token_idx-1]
+                        end_offset = (
+                            len(tokens)
+                            if token_idx - 1 >= len(word2subword)
+                            else word2subword[token_idx - 1]
+                        )
                         # end_offset = len(tokens) if token_idx >= len(word2subword) else word2subword[token_idx-1]
                         ne["token_offset"]["end"] = {
                             "line_id": line_id,
-                            "offset": end_offset
+                            "offset": end_offset,
                         }
-                        ne["token_offset"]["text"] = " ".join(tokens[ne["token_offset"]["start"]["offset"]:ne["token_offset"]["end"]["offset"]])
+                        ne["token_offset"]["text"] = " ".join(
+                            tokens[
+                                ne["token_offset"]["start"]["offset"] : ne[
+                                    "token_offset"
+                                ]["end"]["offset"]
+                            ]
+                        )
 
                         ne["text_offset"]["end"] = {
                             "line_id": line_id,
-                            "offset": text_offsets[end_offset-1][1]
+                            "offset": text_offsets[end_offset - 1][1],
                         }
                         ne["page_id"] = self.page_id
                         ne["title"] = self.page_title
@@ -174,21 +183,20 @@ class ShinraData(object):
                         self.nes.append(ne)
                         ne = {}
 
-                    if is_chunk_start(iob[token_idx-1], iob[token_idx]):
+                    if is_chunk_start(iob[token_idx - 1], iob[token_idx]):
                         ne["attribute"] = attr
                         ne["token_offset"] = {
                             "start": {
                                 "line_id": line_id,
-                                "offset": word2subword[token_idx-1]
+                                "offset": word2subword[token_idx - 1],
                             }
                         }
                         ne["text_offset"] = {
                             "start": {
                                 "line_id": line_id,
-                                "offset": text_offsets[word2subword[token_idx-1]][0]
+                                "offset": text_offsets[word2subword[token_idx - 1]][0],
                             }
                         }
-
 
     @property
     def ner_inputs(self):
@@ -198,7 +206,7 @@ class ShinraData(object):
             sent = {
                 "tokens": self.tokens[idx],
                 "word_idxs": self.word_alignments[idx],
-                "labels": iobs[idx] if self.nes is not None else None
+                "labels": iobs[idx] if self.nes is not None else None,
             }
             outputs.append(sent)
 
@@ -220,7 +228,9 @@ class ShinraData(object):
             prev_idx = 0
             for idx in word_alignments[1:] + [-1]:
                 inword_subwords = tokens[prev_idx:idx]
-                inword_subwords = [s[2:] if s.startswith("##") else s for s in inword_subwords]
+                inword_subwords = [
+                    s[2:] if s.startswith("##") else s for s in inword_subwords
+                ]
                 words.append("".join(inword_subwords))
                 prev_idx = idx
             all_words.append(words)
@@ -235,7 +245,10 @@ class ShinraData(object):
 
         {"O": 0, "B": 1, "I": 2}
         """
-        iobs = [[["O" for _ in range(len(tokens)-1)] for _ in range(len(self.attributes))] for tokens in self.word_alignments]
+        iobs = [
+            [["O" for _ in range(len(tokens) - 1)] for _ in range(len(self.attributes))]
+            for tokens in self.word_alignments
+        ]
         for ne in self.nes:
             if "token_offset" not in ne:
                 continue
@@ -252,7 +265,7 @@ class ShinraData(object):
             # 正解となるsubwordを含むwordまでタグ付
             attr_idx = self.attr2idx[ne["attribute"]]
             ne_start = self.sub2word[start_line][start_offset]
-            ne_end = self.sub2word[end_line][end_offset-1] + 1
+            ne_end = self.sub2word[end_line][end_offset - 1] + 1
 
             for idx in range(ne_start, ne_end):
                 iobs[start_line][attr_idx][idx] = "B" if idx == ne_start else "I"
@@ -261,12 +274,9 @@ class ShinraData(object):
 
 
 class NerDataset(Dataset):
-    label2id = {
-        "O": 0,
-        "B": 1,
-        "I": 2
-    }
+    label2id = {"O": 0, "B": 1, "I": 2}
     # datas = [{"tokens": , "word_idxs": , "labels": }, ...]
+
     def __init__(self, data, tokenizer):
         self.tokenizer = tokenizer
         self.data = data
@@ -277,14 +287,18 @@ class NerDataset(Dataset):
     def __getitem__(self, item):
         input_ids = ["[CLS]"] + self.data[item]["tokens"][:510] + ["[SEP]"]
         input_ids = self.tokenizer.convert_tokens_to_ids(input_ids)
-        word_idxs = [idx+1 for idx in self.data[item]["word_idxs"] if idx <= 510]
+        word_idxs = [idx + 1 for idx in self.data[item]["word_idxs"] if idx <= 510]
 
         labels = self.data[item]["labels"]
         if labels is not None:
             # truncate label using zip(_, word_idxs[:-1]), word_idxs[-1] is not valid idx (for end offset)
-            labels = [[self.label2id[l] for l, _ in zip(label, word_idxs[:-1])] for label in labels]
+            labels = [
+                [self.label2id[l] for l, _ in zip(label, word_idxs[:-1])]
+                for label in labels
+            ]
 
         return input_ids, word_idxs, labels
+
 
 def ner_collate_fn(batch):
     tokens, word_idxs, labels = list(zip(*batch))
@@ -294,20 +308,10 @@ def ner_collate_fn(batch):
     return {"tokens": tokens, "word_idxs": word_idxs, "labels": labels}
 
 
-def decode_iob(preds, attributes):
-    iobs = []
-    idx2iob = ["O", "B", "I"]
-    for attr_idx in range(len(attributes)):
-        attr_iobs = preds[attr_idx]
-        attr_iobs = [[idx2iob[idx] + "-" + attributes[attr_idx] if idx2iob[idx] != "O" else "O" for idx in iob] for iob in attr_iobs]
-
-        iobs.extend(attr_iobs)
-
-    return iobs
-
-
 if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
-    shinra_dataset = ShinraData.from_shinra2020_format("/data1/ujiie/shinra/tohoku_bert/Event/Event_Other")
+    shinra_dataset = ShinraData.from_shinra2020_format(
+        "/data1/ujiie/shinra/tohoku_bert/Event/Event_Other"
+    )
     dataset = NerDataset(shinra_dataset[0].ner_inputs, tokenizer)
     print(dataset[0])
