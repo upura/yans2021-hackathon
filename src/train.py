@@ -15,7 +15,7 @@ from dataset import NerDataset, ShinraData, decode_iob, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
 
-device = "cuda:1" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class EarlyStopping:
