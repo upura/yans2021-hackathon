@@ -93,7 +93,9 @@ class BertForMultilabelNER(nn.Module):
             loss = 0
 
             for label, logit in zip(labels, logits):
-                loss += loss_fct(logit.view(-1, 3), label.view(-1)) / len(labels)
+                loss += loss_fct(logit[:, :-1, :].reshape(-1, 3), label.view(-1)) / len(
+                    labels
+                )
 
         output = (logits,) + outputs[2:]
         return ((loss,) + output) if loss is not None else output
