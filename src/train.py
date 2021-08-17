@@ -13,9 +13,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
-from dataset import NerDataset, ShinraData, decode_iob, ner_collate_fn
+from dataset import NerDataset, ShinraData, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
+from util import decode_iob
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -161,13 +162,15 @@ if __name__ == "__main__":
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
+    category = str(args.input_path).split("/")[-1]
+
     # dataset = [ShinraData(), ....]
-    if os.path.exists("dataset.pkl"):
-        dataset = joblib.load("dataset.pkl")
+    if os.path.exists(f"../tmp/{category}_dataset.pkl"):
+        dataset = joblib.load(f"../tmp/{category}_dataset.pkl")
     else:
         dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
         dataset = [d for d in dataset if d.nes is not None]
-        joblib.dump(dataset, "dataset.pkl", compress=3)
+        joblib.dump(dataset, f"../tmp/{category}_dataset.pkl", compress=3)
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes)).to(device)
     train_dataset, valid_dataset = train_test_split(dataset, test_size=0.1)
