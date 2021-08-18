@@ -3,10 +3,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Union, Any, Optional
 
+from dataclasses_json import dataclass_json
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizer
-from dataclasses_json import dataclass_json
 
 from util import is_chunk_end, is_chunk_start
 
@@ -52,6 +52,24 @@ class NamedEntity:
     text_offset: NEDataOffset
     token_offset: NEDataOffset
 
+    @classmethod
+    def from_annotation(cls, annotation: Annotation):
+        return cls(
+            annotation.page_id,
+            annotation.title,
+            annotation.attribute,
+            text_offset=NEDataOffset(
+                annotation.text_offset.start,
+                annotation.text_offset.end,
+                None
+            ),
+            token_offset=NEDataOffset(
+                annotation.token_offset.start,
+                annotation.token_offset.end,
+                None
+            ),
+        )
+
 
 @dataclass
 class NerExample:
@@ -73,7 +91,8 @@ class ShinraData:
         self.sub2word: list[dict[int, int]] = params["sub2word"]
         self.text_offsets: list[list[DataOffset]] = params["text_offsets"]
         self.valid_line_ids: list[int] = params["valid_line_ids"]
-        self.nes: Optional[list[Annotation]] = params.get("nes", None)
+        self.nes: Optional[list[NamedEntity]] = \
+            [NamedEntity.from_annotation(a) for a in params["nes"]] if "nes" in params else None
 
     @classmethod
     def from_shinra2020_format(cls, input_path: Union[Path, str]) -> list['ShinraData']:
@@ -213,20 +232,20 @@ class ShinraData:
                         token_offset.text = " ".join(
                             tokens[token_offset.start.offset:token_offset.end.offset]
                         )
-
                         text_offset.end = text_offsets[end_offset - 1].end
 
                         assert text_offset.start and text_offset.end
                         assert token_offset.start and token_offset.end
 
-                        ne = NamedEntity(
-                            page_id=self.page_id,
-                            title=self.page_title,
-                            attribute=attr,
-                            text_offset=text_offset,
-                            token_offset=token_offset,
+                        self.nes.append(
+                            NamedEntity(
+                                page_id=self.page_id,
+                                title=self.page_title,
+                                attribute=attr,
+                                text_offset=text_offset,
+                                token_offset=token_offset,
+                            )
                         )
-                        self.nes.append(ne)
 
                     if is_chunk_start(iob[token_idx - 1], iob[token_idx]):
                         text_offset = NEDataOffset(None, None, None)
