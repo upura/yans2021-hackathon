@@ -62,7 +62,7 @@ def find_word_alignment(tokens):
     return word_idxs, sub2word
 
 
-class ShinraData(object):
+class ShinraData:
     def __init__(self, attributes, params={}):
         self.attributes = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}

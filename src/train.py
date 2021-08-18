@@ -6,10 +6,11 @@ import joblib
 import mlflow
 import torch
 import torch.optim as optim
+import torch.nn as nn
 from seqeval.metrics import f1_score
 from sklearn.model_selection import train_test_split
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
@@ -42,7 +43,7 @@ class EarlyStopping:
         return False
 
 
-def parse_arg():
+def parse_arg() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -70,12 +71,10 @@ def parse_arg():
         "--note", type=str, help="Specify attribute_list path in SHINRA2020"
     )
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
-def evaluate(model, dataset, attributes, args):
+def evaluate(model: nn.Module, dataset: Dataset, attributes):
     total_preds, total_trues = predict(model, dataset, device)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
@@ -84,7 +83,7 @@ def evaluate(model, dataset, attributes, args):
     return f1
 
 
-def train(model, train_dataset, valid_dataset, attributes, args):
+def train(model: nn.Module, train_dataset: Dataset, valid_dataset: Dataset, attributes, args):
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     # scheduler = get_scheduler(
     #     args.bsz, args.grad_acc, args.epoch, args.warmup, optimizer, len(train_dataset))
@@ -107,7 +106,7 @@ def train(model, train_dataset, valid_dataset, attributes, args):
 
             labels = [
                 pad_sequence(
-                    [torch.tensor(l) for l in label], padding_value=-1, batch_first=True
+                    [torch.tensor(lbl) for lbl in label], padding_value=-1, batch_first=True
                 ).to(device)
                 for label in labels
             ]
@@ -131,7 +130,7 @@ def train(model, train_dataset, valid_dataset, attributes, args):
             loss.backward()
 
             total_loss += loss.item()
-            mlflow.log_metric("Trian batch loss", loss.item(), step=(e + 1) * step)
+            mlflow.log_metric("Train batch loss", loss.item(), step=(e + 1) * step)
 
             bar.set_description(f"[Epoch] {e + 1}")
             bar.set_postfix({"loss": loss.item()})
@@ -144,9 +143,9 @@ def train(model, train_dataset, valid_dataset, attributes, args):
                 optimizer.zero_grad()
 
         losses.append(total_loss / (step + 1))
-        mlflow.log_metric("Trian loss", losses[-1], step=e)
+        mlflow.log_metric("Train loss", losses[-1], step=e)
 
-        valid_f1 = evaluate(model, valid_dataset, attributes, args)
+        valid_f1 = evaluate(model, valid_dataset, attributes)
         mlflow.log_metric("Valid F1", valid_f1, step=e)
 
         if early_stopping._score < valid_f1:
@@ -156,7 +155,7 @@ def train(model, train_dataset, valid_dataset, attributes, args):
             break
 
 
-if __name__ == "__main__":
+def main():
     args = parse_arg()
 
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
@@ -186,3 +185,7 @@ if __name__ == "__main__":
     train(model, train_dataset, valid_dataset, dataset[0].attributes, args)
     torch.save(model.state_dict(), args.model_path + "last.model")
     mlflow.end_run()
+
+
+if __name__ == "__main__":
+    main()

@@ -78,7 +78,7 @@ def predict(model, dataset, device, sent_wise=False):
     return total_preds, total_trues
 
 
-def parse_arg():
+def parse_arg() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -91,12 +91,10 @@ def parse_arg():
         "--output_path", type=str, help="Specify attribute_list path in SHINRA2020"
     )
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main():
     args = parse_arg()
 
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
@@ -117,3 +115,7 @@ if __name__ == "__main__":
                 [json.dumps(ne, ensure_ascii=False) for d in dataset for ne in d.nes]
             )
         )
+
+
+if __name__ == "__main__":
+    main()
