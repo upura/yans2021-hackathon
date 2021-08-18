@@ -1,12 +1,40 @@
-import json
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Union
 
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
+from dataclasses_json import dataclass_json
 
 from util import is_chunk_end, is_chunk_start
+
+
+@dataclass_json
+@dataclass
+class OffsetPoint:
+    line_id: int
+    offset: int
+
+
+@dataclass_json
+@dataclass
+class DataOffset:
+    start: OffsetPoint
+    end: OffsetPoint
+
+
+@dataclass_json
+@dataclass
+class Annotation:
+    page_id: str
+    title: str
+    attribute: str
+    html_offset: DataOffset
+    text_offset: DataOffset
+    token_offset: DataOffset
+    ENE: str
 
 
 def load_tokens(path, vocab):
@@ -20,30 +48,6 @@ def load_tokens(path, vocab):
             text_offsets.append([[l[1], l[2]] for l in line])
 
     return tokens, text_offsets
-
-
-def load_vocab(path):
-    vocab = []
-    with open(path, "r") as f:
-        for line in f:
-            line = line.rstrip()
-            if not line:
-                continue
-            vocab.append(line)
-    return vocab
-
-
-def load_annotation(path):
-    ann = defaultdict(list)
-    with open(path, "r") as f:
-        for line in f:
-            line = line.rstrip()
-            if not line:
-                continue
-            line = json.loads(line)
-            line["page_id"] = int(line["page_id"])
-            ann[line["page_id"]].append(line)
-    return ann
 
 
 def find_word_alignment(tokens):
@@ -63,7 +67,7 @@ def find_word_alignment(tokens):
 
 
 class ShinraData:
-    def __init__(self, attributes, params={}):
+    def __init__(self, attributes, params):
         self.attributes = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
 
@@ -82,25 +86,26 @@ class ShinraData:
             setattr(self, key, value)
 
     @classmethod
-    def from_shinra2020_format(cls, input_path=None):
-
+    def from_shinra2020_format(cls, input_path: Union[Path, str]):
         input_path = Path(input_path)
         category = input_path.stem
+        annotation_path = input_path / f"{category}_dist.json"
+        vocab_path = input_path / "vocab.txt"
+        attributes_path = input_path / "attributes.txt"
 
-        anns = load_annotation(input_path / f"{category}_dist.json")
-        vocab = load_vocab(input_path / "vocab.txt")
+        annotations: dict[str, list[Annotation]] = cls._load_annotation(annotation_path)
+        vocab = cls._load_vocab(vocab_path)
 
         # create attributes
-        if (input_path / "attributes.txt").exists():
-            with open(input_path / "attributes.txt", "r") as f:
-                attributes = [attr for attr in f.read().split("\n") if attr != ""]
+        if attributes_path.exists():
+            with attributes_path.open() as f:
+                attributes: list[str] = [attr.strip() for attr in f if attr.strip() != ""]
         else:
-            attributes = set()
-            for page_id, ann in anns.items():
-                attributes.update([a["attribute"] for a in ann if "attribute" in a])
-            attributes = list(attributes)
-            with open(input_path / "attributes.txt", "w") as f:
-                f.write("\n".join(attributes))
+            attributes_set = set()
+            for page_id, anns in annotations.items():
+                attributes_set |= {ann.attribute for ann in anns}
+            with attributes_path.open(mode="wt") as f:
+                f.write("\n".join(attributes_set) + "\n")
 
         docs = []
         for token_file in tqdm(
@@ -108,7 +113,7 @@ class ShinraData:
             total=len([token for token in input_path.glob("tokens/*.txt")]),
         ):
             try:
-                page_id = int(token_file.stem)
+                page_id: str = token_file.stem
                 tokens, text_offsets = load_tokens(token_file, vocab)
                 valid_line_ids = [
                     idx for idx, token in enumerate(tokens) if len(token) > 0
@@ -135,13 +140,36 @@ class ShinraData:
                     "valid_line_ids": valid_line_ids,
                 }
 
-                if page_id in anns:
-                    data["nes"] = anns[page_id]
+                if page_id in annotations:
+                    data["nes"] = annotations[page_id]
 
                 docs.append(cls(attributes, params=data))
             except:
                 pass
         return docs
+
+    @staticmethod
+    def _load_annotation(path: Path) -> dict[str, list[Annotation]]:
+        annotations: dict[str, list[Annotation]] = defaultdict(list)
+        with path.open() as f:
+            for line in f:
+                line = line.rstrip()
+                if not line:
+                    continue
+                annotation: Annotation = Annotation.from_json(line)
+                annotations[annotation.page_id].append(annotation)
+        return annotations
+
+    @staticmethod
+    def _load_vocab(path: Path):
+        vocab = []
+        with path.open() as f:
+            for line in f:
+                line = line.rstrip()
+                if not line:
+                    continue
+                vocab.append(line)
+        return vocab
 
     # iobs = [sents1, sents2, ...]
     # sents1 = [[iob1_attr1, iob2_attr1, ...], [iob1_attr2, iob2_attr2, ...], ...]
