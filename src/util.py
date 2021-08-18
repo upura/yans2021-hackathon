@@ -17,16 +17,16 @@ def calculate_recall(trues, candidates, ks=[1, 5, 10, 30, 50, 100]):
 
 # "O": 0, "B": 1, "I": 2
 # 0,1 0,2 1,1 2,1
-def is_chunk_start(prev_tag, tag):
+def is_chunk_start(prev_tag: int, tag: int) -> bool:
     return tag == 1 or (prev_tag == 0 and tag == 2)
 
 
 # 1,0 2,0 1,1 2,1
-def is_chunk_end(prev_tag, tag):
+def is_chunk_end(prev_tag: int, tag: int) -> bool:
     return prev_tag != 0 and tag != 2
 
 
-def save_model(model, output_path):
+def save_model(model, output_path) -> None:
     model_to_save = model.module if hasattr(model, "module") else model
     torch.save(model_to_save.state_dict(), output_path)
 

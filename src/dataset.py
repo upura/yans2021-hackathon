@@ -5,7 +5,7 @@ from typing import Union, Any, Optional
 
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 from dataclasses_json import dataclass_json
 
 from util import is_chunk_end, is_chunk_start
@@ -38,26 +38,26 @@ class Annotation:
 
 
 @dataclass
+class NEDataOffset:
+    start: Optional[OffsetPoint]
+    end: Optional[OffsetPoint]
+    text: Optional[str]
+
+
+@dataclass(frozen=True)
+class NamedEntity:
+    page_id: str
+    title: str
+    attribute: str
+    text_offset: NEDataOffset
+    token_offset: NEDataOffset
+
+
+@dataclass
 class NerExample:
     tokens: list[str]
-    word_idxs: tuple[list[int], dict[int, int]]
+    word_idxs: list[int]
     labels: Optional[list[list[str]]]
-
-
-def find_word_alignment(tokens):
-    word_idxs = []
-    sub2word = {}
-    for idx, token in enumerate(tokens):
-        if not token.startswith("##"):
-            word_idxs.append(idx)
-        sub2word[idx] = len(word_idxs) - 1
-
-    # add word_idx for end offset
-    if len(tokens) > 0:
-        word_idxs.append(len(tokens))
-        sub2word[len(tokens)] = len(word_idxs) - 1
-
-    return word_idxs, sub2word
 
 
 class ShinraData:
@@ -65,22 +65,18 @@ class ShinraData:
         self.attributes: list[str] = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
 
-        self.page_id = None
-        self.page_title = None
-        self.category = None
-        self.plain_text = None
-        self.tokens = None
-        self.word_alignments = None
-        self.sub2word = None
-        self.text_offsets = None
-        self.valid_line_ids = None
-        self.nes = None
-
-        for key, value in params.items():
-            setattr(self, key, value)
+        self.page_id: str = params["page_id"]
+        self.page_title: str = params["page_title"]
+        self.category: str = params["category"]
+        self.tokens: list[list[str]] = params["tokens"]
+        self.word_alignments: list[list[int]] = params["word_alignments"]
+        self.sub2word: list[dict[int, int]] = params["sub2word"]
+        self.text_offsets: list[list[DataOffset]] = params["text_offsets"]
+        self.valid_line_ids: list[int] = params["valid_line_ids"]
+        self.nes: Optional[list[Annotation]] = params.get("nes", None)
 
     @classmethod
-    def from_shinra2020_format(cls, input_path: Union[Path, str]):
+    def from_shinra2020_format(cls, input_path: Union[Path, str]) -> list['ShinraData']:
         input_path = Path(input_path)
         category = input_path.stem
         annotation_path = input_path / f"{category}_dist.json"
@@ -96,11 +92,8 @@ class ShinraData:
             with attributes_path.open() as f:
                 attributes: list[str] = [attr.strip() for attr in f if attr.strip() != ""]
         else:
-            attributes_set = set()
-            for page_id, anns in annotations.items():
-                attributes_set |= {ann.attribute for ann in anns}
-            with attributes_path.open(mode="wt") as f:
-                f.write("\n".join(attributes_set) + "\n")
+            attributes: list[str] = list({ann.attribute for anns in annotations.values() for ann in anns})
+            attributes_path.write_text("\n".join(attributes) + "\n")
 
         docs = []
         for token_file in tqdm(
@@ -119,11 +112,13 @@ class ShinraData:
             title = title_line[:pos]
 
             # find word alignments = start positions of words
-            word_alignments = [find_word_alignment(t) for t in tokens]
-            sub2word = [w[1] for w in word_alignments]
-            word_alignments = [w[0] for w in word_alignments]
+            word_alignments, sub2word = [], []
+            for token in tokens:
+                word_idxs, s2w = cls._find_word_alignment(token)
+                word_alignments.append(word_idxs)
+                sub2word.append(s2w)
 
-            data = {
+            params = {
                 "page_id": page_id,
                 "page_title": title,
                 "category": category,
@@ -135,9 +130,9 @@ class ShinraData:
             }
 
             if page_id in annotations:
-                data["nes"] = annotations[page_id]
+                params["nes"] = annotations[page_id]
 
-            docs.append(cls(attributes, params=data))
+            docs.append(cls(attributes, params=params))
         return docs
 
     @staticmethod
@@ -158,79 +153,86 @@ class ShinraData:
             return [line.rstrip() for line in f if line.rstrip()]
 
     @staticmethod
-    def _load_tokens(path: Path, vocab: list[str]):
-        tokens: list[list[str]] = []
-        text_offsets = []
+    def _load_tokens(path: Path, vocab: list[str]) -> tuple[list[list[str]], list[list[DataOffset]]]:
+        tokens_list: list[list[str]] = []
+        text_offsets: list[list[DataOffset]] = []
         with path.open() as f:
-            for line in f:
-                raw_tokens = line.rstrip().split()
-                line = [l.split(",") for l in raw_tokens]
-                tokens.append([vocab[int(l[0])] for l in line])
-                text_offsets.append([[l[1], l[2]] for l in line])
+            for line_id, line in enumerate(f):
+                tokens, offsets = [], []
+                for raw_token in line.rstrip().split():
+                    token_id, start_idx, end_idx = raw_token.split(",")
+                    tokens.append(vocab[int(token_id)])
+                    offsets.append(DataOffset(
+                        OffsetPoint(line_id, int(start_idx)),
+                        OffsetPoint(line_id, int(end_idx)),
+                    ))
+                tokens_list.append(tokens)
+                text_offsets.append(offsets)
 
-        return tokens, text_offsets
+        return tokens_list, text_offsets
+
+    @staticmethod
+    def _find_word_alignment(tokens: list[str]) -> tuple[list[int], dict[int, int]]:
+        word_idxs: list[int] = []
+        sub2word: dict[int, int] = {}
+        for idx, token in enumerate(tokens):
+            if not token.startswith("##"):
+                word_idxs.append(idx)
+            sub2word[idx] = len(word_idxs) - 1
+
+        # add word_idx for end offset
+        if len(tokens) > 0:
+            word_idxs.append(len(tokens))
+            sub2word[len(tokens)] = len(word_idxs) - 1
+
+        return word_idxs, sub2word
 
     # iobs = [sents1, sents2, ...]
     # sents1 = [[iob1_attr1, iob2_attr1, ...], [iob1_attr2, iob2_attr2, ...], ...]
-    def add_nes_from_iob(self, iobs):
-        assert len(iobs) == len(
-            self.valid_line_ids
-        ), f"{len(iobs)}, {len(self.valid_line_ids)}"
-        self.nes = []
+    def add_nes_from_iob(self, iobs: list[list[list[int]]]):
+        assert len(iobs) == len(self.valid_line_ids), f"{len(iobs)}, {len(self.valid_line_ids)}"
+        self.nes: list[NamedEntity] = []
 
         for line_id, sent_iob in zip(self.valid_line_ids, iobs):
-            word2subword = self.word_alignments[line_id]
-            tokens = self.tokens[line_id]
-            text_offsets = self.text_offsets[line_id]
+            word2subword: list[int] = self.word_alignments[line_id]
+            tokens: list[str] = self.tokens[line_id]
+            text_offsets: list[DataOffset] = self.text_offsets[line_id]
             for iob, attr in zip(sent_iob, self.attributes):
-                ne = {}
-                iob = [0] + iob + [0]
+                text_offset = NEDataOffset(None, None, None)
+                token_offset = NEDataOffset(None, None, None)
+                iob: list[int] = [0] + iob + [0]
                 for token_idx in range(1, len(iob)):
                     if is_chunk_end(iob[token_idx - 1], iob[token_idx]):
-                        assert ne != {}
                         # token_idxは本来のものから+2されているので，word2subwordはneの外のはじめのtoken_id
                         end_offset = (
                             len(tokens)
                             if token_idx - 1 >= len(word2subword)
                             else word2subword[token_idx - 1]
                         )
-                        # end_offset = len(tokens) if token_idx >= len(word2subword) else word2subword[token_idx-1]
-                        ne["token_offset"]["end"] = {
-                            "line_id": line_id,
-                            "offset": end_offset,
-                        }
-                        ne["token_offset"]["text"] = " ".join(
-                            tokens[
-                                ne["token_offset"]["start"]["offset"] : ne[
-                                    "token_offset"
-                                ]["end"]["offset"]
-                            ]
+                        token_offset.end = OffsetPoint(line_id, end_offset)
+                        token_offset.text = " ".join(
+                            tokens[token_offset.start.offset:token_offset.end.offset]
                         )
 
-                        ne["text_offset"]["end"] = {
-                            "line_id": line_id,
-                            "offset": text_offsets[end_offset - 1][1],
-                        }
-                        ne["page_id"] = self.page_id
-                        ne["title"] = self.page_title
+                        text_offset.end = text_offsets[end_offset - 1].end
 
+                        assert text_offset.start and text_offset.end
+                        assert token_offset.start and token_offset.end
+
+                        ne = NamedEntity(
+                            page_id=self.page_id,
+                            title=self.page_title,
+                            attribute=attr,
+                            text_offset=text_offset,
+                            token_offset=token_offset,
+                        )
                         self.nes.append(ne)
-                        ne = {}
 
                     if is_chunk_start(iob[token_idx - 1], iob[token_idx]):
-                        ne["attribute"] = attr
-                        ne["token_offset"] = {
-                            "start": {
-                                "line_id": line_id,
-                                "offset": word2subword[token_idx - 1],
-                            }
-                        }
-                        ne["text_offset"] = {
-                            "start": {
-                                "line_id": line_id,
-                                "offset": text_offsets[word2subword[token_idx - 1]][0],
-                            }
-                        }
+                        text_offset = NEDataOffset(None, None, None)
+                        token_offset = NEDataOffset(None, None, None)
+                        token_offset.start = OffsetPoint(line_id, word2subword[token_idx - 1])
+                        text_offset.start = text_offsets[word2subword[token_idx - 1]].start
 
     @property
     def ner_inputs(self) -> list[NerExample]:
@@ -255,8 +257,8 @@ class ShinraData:
         return outputs
 
     @property
-    def words(self):
-        all_words = []
+    def words(self) -> list[list[str]]:
+        all_words: list[list[str]] = []
         for tokens, word_alignments in zip(self.tokens, self.word_alignments):
             words = []
             prev_idx = 0
@@ -311,8 +313,8 @@ class NerDataset(Dataset):
     label2id = {"O": 0, "B": 1, "I": 2}
     # datas = [{"tokens": , "word_idxs": , "labels": }, ...]
 
-    def __init__(self, examples: list[NerExample], tokenizer):
-        self.tokenizer = tokenizer
+    def __init__(self, examples: list[NerExample], tokenizer: PreTrainedTokenizer):
+        self.tokenizer: PreTrainedTokenizer = tokenizer
         self.examples: list[NerExample] = examples
 
     def __len__(self):
@@ -343,9 +345,9 @@ def ner_collate_fn(batch):
 
 
 if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
+    _tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
     shinra_dataset = ShinraData.from_shinra2020_format(
         "/data1/ujiie/shinra/tohoku_bert/Event/Event_Other"
     )
-    dataset = NerDataset(shinra_dataset[0].ner_inputs, tokenizer)
+    dataset = NerDataset(shinra_dataset[0].ner_inputs, _tokenizer)
     print(dataset[0])
