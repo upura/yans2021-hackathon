@@ -1,4 +1,3 @@
-import apex
 import torch
 from transformers import get_linear_schedule_with_warmup
 
@@ -37,6 +36,7 @@ def to_parallel(model):
 
 
 def to_fp16(model, optimizer=None, fp16_opt_level=None):
+    import apex
     if optimizer is None:
         model = apex.amp.initialize(model, opt_level=fp16_opt_level)
         return model
