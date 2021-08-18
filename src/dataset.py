@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Union, Any, Optional
 
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -12,21 +12,21 @@ from util import is_chunk_end, is_chunk_start
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class OffsetPoint:
     line_id: int
     offset: int
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class DataOffset:
     start: OffsetPoint
     end: OffsetPoint
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class Annotation:
     page_id: str
     title: str
@@ -37,17 +37,11 @@ class Annotation:
     ENE: str
 
 
-def load_tokens(path, vocab):
-    tokens = []
-    text_offsets = []
-    with open(path, "r") as f:
-        for line in f:
-            line = line.rstrip().split()
-            line = [l.split(",") for l in line]
-            tokens.append([vocab[int(l[0])] for l in line])
-            text_offsets.append([[l[1], l[2]] for l in line])
-
-    return tokens, text_offsets
+@dataclass
+class NerExample:
+    tokens: list[str]
+    word_idxs: tuple[list[int], dict[int, int]]
+    labels: Optional[list[list[str]]]
 
 
 def find_word_alignment(tokens):
@@ -67,8 +61,8 @@ def find_word_alignment(tokens):
 
 
 class ShinraData:
-    def __init__(self, attributes, params):
-        self.attributes = attributes
+    def __init__(self, attributes: list[str], params: dict[str, Any]):
+        self.attributes: list[str] = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
 
         self.page_id = None
@@ -92,9 +86,10 @@ class ShinraData:
         annotation_path = input_path / f"{category}_dist.json"
         vocab_path = input_path / "vocab.txt"
         attributes_path = input_path / "attributes.txt"
+        tokens_dir = input_path / "tokens"
 
         annotations: dict[str, list[Annotation]] = cls._load_annotation(annotation_path)
-        vocab = cls._load_vocab(vocab_path)
+        vocab: list[str] = cls._load_vocab(vocab_path)
 
         # create attributes
         if attributes_path.exists():
@@ -109,43 +104,40 @@ class ShinraData:
 
         docs = []
         for token_file in tqdm(
-            input_path.glob("tokens/*.txt"),
-            total=len([token for token in input_path.glob("tokens/*.txt")]),
+            tokens_dir.glob("*.txt"),
+            # total=len([token for token in tokens_dir.glob("*.txt")]),
         ):
-            try:
-                page_id: str = token_file.stem
-                tokens, text_offsets = load_tokens(token_file, vocab)
-                valid_line_ids = [
-                    idx for idx, token in enumerate(tokens) if len(token) > 0
-                ]
+            page_id: str = token_file.stem
+            tokens, text_offsets = cls._load_tokens(token_file, vocab)
+            valid_line_ids: list[int] = [
+                idx for idx, token in enumerate(tokens) if len(token) > 0
+            ]
 
-                # find title
-                title = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
-                pos = title.find("-jawiki")
-                title = title[:pos]
+            # find title
+            title_line: str = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
+            pos = title_line.find("-jawiki")
+            title = title_line[:pos]
 
-                # find word alignments = start positions of words
-                word_alignments = [find_word_alignment(t) for t in tokens]
-                sub2word = [w[1] for w in word_alignments]
-                word_alignments = [w[0] for w in word_alignments]
+            # find word alignments = start positions of words
+            word_alignments = [find_word_alignment(t) for t in tokens]
+            sub2word = [w[1] for w in word_alignments]
+            word_alignments = [w[0] for w in word_alignments]
 
-                data = {
-                    "page_id": page_id,
-                    "page_title": title,
-                    "category": category,
-                    "tokens": tokens,
-                    "text_offsets": text_offsets,
-                    "word_alignments": word_alignments,
-                    "sub2word": sub2word,
-                    "valid_line_ids": valid_line_ids,
-                }
+            data = {
+                "page_id": page_id,
+                "page_title": title,
+                "category": category,
+                "tokens": tokens,
+                "text_offsets": text_offsets,
+                "word_alignments": word_alignments,
+                "sub2word": sub2word,
+                "valid_line_ids": valid_line_ids,
+            }
 
-                if page_id in annotations:
-                    data["nes"] = annotations[page_id]
+            if page_id in annotations:
+                data["nes"] = annotations[page_id]
 
-                docs.append(cls(attributes, params=data))
-            except:
-                pass
+            docs.append(cls(attributes, params=data))
         return docs
 
     @staticmethod
@@ -161,15 +153,22 @@ class ShinraData:
         return annotations
 
     @staticmethod
-    def _load_vocab(path: Path):
-        vocab = []
+    def _load_vocab(path: Path) -> list[str]:
+        with path.open() as f:
+            return [line.rstrip() for line in f if line.rstrip()]
+
+    @staticmethod
+    def _load_tokens(path: Path, vocab: list[str]):
+        tokens: list[list[str]] = []
+        text_offsets = []
         with path.open() as f:
             for line in f:
-                line = line.rstrip()
-                if not line:
-                    continue
-                vocab.append(line)
-        return vocab
+                raw_tokens = line.rstrip().split()
+                line = [l.split(",") for l in raw_tokens]
+                tokens.append([vocab[int(l[0])] for l in line])
+                text_offsets.append([[l[1], l[2]] for l in line])
+
+        return tokens, text_offsets
 
     # iobs = [sents1, sents2, ...]
     # sents1 = [[iob1_attr1, iob2_attr1, ...], [iob1_attr2, iob2_attr2, ...], ...]
@@ -234,15 +233,15 @@ class ShinraData:
                         }
 
     @property
-    def ner_inputs(self):
-        outputs = []
+    def ner_inputs(self) -> list[NerExample]:
+        outputs: list[NerExample] = []
         iobs = self.iob
         for idx in self.valid_line_ids:
-            sent = {
-                "tokens": self.tokens[idx],
-                "word_idxs": self.word_alignments[idx],
-                "labels": iobs[idx] if self.nes is not None else None,
-            }
+            sent = NerExample(
+                tokens=self.tokens[idx],
+                word_idxs=self.word_alignments[idx],
+                labels=iobs[idx] if self.nes is not None else None,
+            )
             outputs.append(sent)
 
         # outputs["input_ids"] = self.tokens
@@ -272,7 +271,7 @@ class ShinraData:
         return all_words
 
     @property
-    def iob(self):
+    def iob(self) -> list[list[list[str]]]:
         """
         %%% IOB for ** only word-level iob2 tag **
         iobs = [sent, sent, ...]
@@ -312,23 +311,23 @@ class NerDataset(Dataset):
     label2id = {"O": 0, "B": 1, "I": 2}
     # datas = [{"tokens": , "word_idxs": , "labels": }, ...]
 
-    def __init__(self, data, tokenizer):
+    def __init__(self, examples: list[NerExample], tokenizer):
         self.tokenizer = tokenizer
-        self.data = data
+        self.examples: list[NerExample] = examples
 
     def __len__(self):
-        return len(self.data)
+        return len(self.examples)
 
     def __getitem__(self, item):
-        input_ids = ["[CLS]"] + self.data[item]["tokens"][:510] + ["[SEP]"]
+        input_ids = ["[CLS]"] + self.examples[item].tokens[:510] + ["[SEP]"]
         input_ids = self.tokenizer.convert_tokens_to_ids(input_ids)
-        word_idxs = [idx + 1 for idx in self.data[item]["word_idxs"] if idx <= 510]
+        word_idxs = [idx + 1 for idx in self.examples[item].word_idxs if idx <= 510]
 
-        labels = self.data[item]["labels"]
+        labels = self.examples[item].labels
         if labels is not None:
             # truncate label using zip(_, word_idxs[:-1]), word_idxs[-1] is not valid idx (for end offset)
             labels = [
-                [self.label2id[l] for l, _ in zip(label, word_idxs[:-1])]
+                [self.label2id[lbl] for lbl, _ in zip(label, word_idxs[:-1])]
                 for label in labels
             ]
 
