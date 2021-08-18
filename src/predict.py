@@ -14,8 +14,8 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def ner_for_shinradata(model, tokenizer, shinra_dataset, device):
-    processed_data = shinra_dataset.ner_inputs
-    dataset = NerDataset(processed_data, tokenizer)
+    ner_examples = shinra_dataset.to_ner_examples()
+    dataset = NerDataset(ner_examples, tokenizer)
     total_preds, _ = predict(model, dataset, device, sent_wise=True)
 
     shinra_dataset.add_nes_from_iob(total_preds)
