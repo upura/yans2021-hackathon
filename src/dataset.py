@@ -14,42 +14,6 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from util import is_chunk_end, is_chunk_start
 
 
-def parse_token_file(token_file, vocab, category, annotations, cls, attributes):
-    page_id: str = token_file.stem
-    tokens, text_offsets = cls._load_tokens(token_file, vocab)
-    valid_line_ids: List[int] = [
-        idx for idx, token in enumerate(tokens) if len(token) > 0
-    ]
-
-    # find title
-    title_line: str = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
-    pos = title_line.find("-jawiki")
-    title = title_line[:pos]
-
-    # find word alignments = start positions of words
-    word_alignments, sub2word = [], []
-    for token in tokens:
-        word_idxs, s2w = cls._find_word_alignment(token)
-        word_alignments.append(word_idxs)
-        sub2word.append(s2w)
-
-    params = {
-        "page_id": page_id,
-        "page_title": title,
-        "category": category,
-        "tokens": tokens,
-        "text_offsets": text_offsets,
-        "word_alignments": word_alignments,
-        "sub2word": sub2word,
-        "valid_line_ids": valid_line_ids,
-    }
-
-    if page_id in annotations:
-        params["nes"] = annotations[page_id]
-
-    return cls(attributes, params=params)
-
-
 @dataclass_json
 @dataclass(frozen=True)
 class OffsetPoint:
@@ -158,11 +122,54 @@ class ShinraData:
 
         with Pool() as p:
             args = [
-                (token_file, vocab, category, annotations, cls, attributes)
-                for token_file in tokens_dir.glob("tokens/*.txt")
+                (token_file, vocab, category, annotations, attributes)
+                for token_file in tokens_dir.glob("*.txt")
             ]
-            docs = p.starmap(parse_token_file, tqdm(args, total=len(args)))
+            docs = p.starmap(cls._parse_token_file, tqdm(args, total=len(args)))
         return docs
+
+    @classmethod
+    def _parse_token_file(
+        cls,
+        token_file: Path,
+        vocab: list[str],
+        category: str,
+        annotations: dict[str, list[Annotation]],
+        attributes: list[str],
+    ) -> "ShinraData":
+        page_id: str = token_file.stem
+        tokens, text_offsets = cls._load_tokens(token_file, vocab)
+        valid_line_ids: list[int] = [
+            idx for idx, token in enumerate(tokens) if len(token) > 0
+        ]
+
+        # find title
+        title_line: str = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
+        pos = title_line.find("-jawiki")
+        title = title_line[:pos]
+
+        # find word alignments = start positions of words
+        word_alignments, sub2word = [], []
+        for token in tokens:
+            word_idxs, s2w = cls._find_word_alignment(token)
+            word_alignments.append(word_idxs)
+            sub2word.append(s2w)
+
+        params = {
+            "page_id": page_id,
+            "page_title": title,
+            "category": category,
+            "tokens": tokens,
+            "text_offsets": text_offsets,
+            "word_alignments": word_alignments,
+            "sub2word": sub2word,
+            "valid_line_ids": valid_line_ids,
+        }
+
+        if page_id in annotations:
+            params["nes"] = annotations[page_id]
+
+        return cls(attributes, params=params)
 
     @staticmethod
     def _load_annotation(path: Path) -> Dict[str, List[Annotation]]:

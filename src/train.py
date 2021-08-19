@@ -5,13 +5,13 @@ from pathlib import Path
 import joblib
 import mlflow
 import torch
-import torch.optim as optim
 import torch.nn as nn
+import torch.optim as optim
 from seqeval.metrics import f1_score
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer
+from transformers import AutoModel, AutoTokenizer
 
 from dataset import NerDataset, ShinraData, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
@@ -82,7 +82,13 @@ def evaluate(model: nn.Module, dataset: Dataset, attributes):
     return f1
 
 
-def train(model: nn.Module, train_dataset: NerDataset, valid_dataset: Dataset, attributes, args):
+def train(
+    model: nn.Module,
+    train_dataset: NerDataset,
+    valid_dataset: Dataset,
+    attributes,
+    args,
+):
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     # scheduler = get_scheduler(
     #     args.bsz, args.grad_acc, args.epoch, args.warmup, optimizer, len(train_dataset))
@@ -99,7 +105,10 @@ def train(model: nn.Module, train_dataset: NerDataset, valid_dataset: Dataset, a
         total_loss = 0
         model.train()
         for step, batch in enumerate(train_dataloader):
-            batch = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
+            batch = {
+                k: (v.to(device) if isinstance(v, torch.Tensor) else v)
+                for k, v in batch.items()
+            }
             input_ids = batch["input_ids"]  # (b, seq)
             word_idxs = batch["word_idxs"]  # (b, word)
             labels = batch["labels"]  # (attr, b, seq)
@@ -154,12 +163,19 @@ def main():
     category = str(args.input_path).split("/")[-1]
 
     # dataset = [ShinraData(), ....]
-    if os.path.exists(f"../tmp/{category}_dataset.pkl"):
-        dataset = joblib.load(f"../tmp/{category}_dataset.pkl")
+    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
+    dataset_cache_dir.mkdir(exist_ok=True)
+    cache_path = dataset_cache_dir / f"{category}_dataset.pkl"
+    if cache_path.exists():
+        print(f"Loading cached dataset from {cache_path}")
+        dataset = joblib.load(cache_path)
     else:
+        print(f"Cached dataset not found. Building one from {args.input_path}")
         dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
+        cache_path_all = dataset_cache_dir / f"{category}_all_dataset.pkl"
+        joblib.dump(dataset, cache_path_all, compress=3)
         dataset = [d for d in dataset if d.nes is not None]
-        joblib.dump(dataset, f"../tmp/{category}_dataset.pkl", compress=3)
+        joblib.dump(dataset, cache_path, compress=3)
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes)).to(device)
     train_dataset, valid_dataset = train_test_split(dataset, test_size=0.1)

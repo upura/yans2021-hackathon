@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from pathlib import Path
 
 import torch
@@ -102,9 +103,13 @@ if __name__ == "__main__":
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
+    category = str(args.input_path).split("/")[-1]
+
     # dataset = [ShinraData(), ....]
-    dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
-    # dataset = [d for idx, d in enumerate(dataset) if idx < 20 and d.nes is not None]
+    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
+    cache_path = dataset_cache_dir / f"{category}_all_dataset.pkl"
+    dataset = joblib.load(cache_path)
+    dataset = [d for idx, d in enumerate(dataset) if idx < 20 and d.nes is not None]
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes))
     model.load_state_dict(torch.load(args.model_path))
