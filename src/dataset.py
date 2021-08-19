@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.utils.rnn as rnn
@@ -72,32 +72,32 @@ class NamedEntity:
 
 @dataclass
 class NerExample:
-    tokens: list[str]
-    word_idxs: list[int]
-    labels: Optional[list[list[str]]]
+    tokens: List[str]
+    word_idxs: List[int]
+    labels: Optional[List[List[str]]]
 
 
 class ShinraData:
-    def __init__(self, attributes: list[str], params: dict[str, Any]):
-        self.attributes: list[str] = attributes
+    def __init__(self, attributes: List[str], params: Dict[str, Any]):
+        self.attributes: List[str] = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
 
         self.page_id: str = params["page_id"]
         self.page_title: str = params["page_title"]
         self.category: str = params["category"]
-        self.tokens: list[list[str]] = params["tokens"]
-        self.word_alignments: list[list[int]] = params["word_alignments"]
-        self.sub2word: list[dict[int, int]] = params["sub2word"]
-        self.text_offsets: list[list[DataOffset]] = params["text_offsets"]
-        self.valid_line_ids: list[int] = params["valid_line_ids"]
-        self.nes: Optional[list[NamedEntity]] = (
+        self.tokens: List[List[str]] = params["tokens"]
+        self.word_alignments: List[List[int]] = params["word_alignments"]
+        self.sub2word: List[Dict[int, int]] = params["sub2word"]
+        self.text_offsets: List[List[DataOffset]] = params["text_offsets"]
+        self.valid_line_ids: List[int] = params["valid_line_ids"]
+        self.nes: Optional[List[NamedEntity]] = (
             [NamedEntity.from_annotation(a) for a in params["nes"]]
             if "nes" in params
             else None
         )
 
     @classmethod
-    def from_shinra2020_format(cls, input_path: Union[Path, str]) -> list["ShinraData"]:
+    def from_shinra2020_format(cls, input_path: Union[Path, str]) -> List["ShinraData"]:
         input_path = Path(input_path)
         category = input_path.stem
         annotation_path = input_path / f"{category}_dist.json"
@@ -105,17 +105,17 @@ class ShinraData:
         attributes_path = input_path / "attributes.txt"
         tokens_dir = input_path / "tokens"
 
-        annotations: dict[str, list[Annotation]] = cls._load_annotation(annotation_path)
-        vocab: list[str] = cls._load_vocab(vocab_path)
+        annotations: Dict[str, List[Annotation]] = cls._load_annotation(annotation_path)
+        vocab: List[str] = cls._load_vocab(vocab_path)
 
         # create attributes
         if attributes_path.exists():
             with attributes_path.open() as f:
-                attributes: list[str] = [
+                attributes: List[str] = [
                     attr.strip() for attr in f if attr.strip() != ""
                 ]
         else:
-            attributes: list[str] = list(
+            attributes: List[str] = list(
                 {ann.attribute for anns in annotations.values() for ann in anns}
             )
             attributes_path.write_text("\n".join(attributes) + "\n")
@@ -132,19 +132,21 @@ class ShinraData:
     def _parse_token_file(
         cls,
         token_file: Path,
-        vocab: list[str],
+        vocab: List[str],
         category: str,
-        annotations: dict[str, list[Annotation]],
-        attributes: list[str],
+        annotations: Dict[str, List[Annotation]],
+        attributes: List[str],
     ) -> "ShinraData":
         page_id: str = token_file.stem
         tokens, text_offsets = cls._load_tokens(token_file, vocab)
-        valid_line_ids: list[int] = [
+        valid_line_ids: List[int] = [
             idx for idx, token in enumerate(tokens) if len(token) > 0
         ]
 
         # find title
-        title_line: str = "".join([t[2:] if t.startswith("##") else t for t in tokens[4]])
+        title_line: str = "".join(
+            [t[2:] if t.startswith("##") else t for t in tokens[4]]
+        )
         pos = title_line.find("-jawiki")
         title = title_line[:pos]
 
@@ -172,8 +174,8 @@ class ShinraData:
         return cls(attributes, params=params)
 
     @staticmethod
-    def _load_annotation(path: Path) -> dict[str, list[Annotation]]:
-        annotations: dict[str, list[Annotation]] = defaultdict(list)
+    def _load_annotation(path: Path) -> Dict[str, List[Annotation]]:
+        annotations: Dict[str, List[Annotation]] = defaultdict(list)
         with path.open() as f:
             for line in f:
                 line = line.rstrip()
@@ -184,16 +186,16 @@ class ShinraData:
         return annotations
 
     @staticmethod
-    def _load_vocab(path: Path) -> list[str]:
+    def _load_vocab(path: Path) -> List[str]:
         with path.open() as f:
             return [line.rstrip() for line in f if line.rstrip()]
 
     @staticmethod
     def _load_tokens(
-        path: Path, vocab: list[str]
-    ) -> tuple[list[list[str]], list[list[DataOffset]]]:
-        tokens_list: list[list[str]] = []
-        text_offsets: list[list[DataOffset]] = []
+        path: Path, vocab: List[str]
+    ) -> Tuple[List[List[str]], List[List[DataOffset]]]:
+        tokens_list: List[List[str]] = []
+        text_offsets: List[List[DataOffset]] = []
         with path.open() as f:
             for line_id, line in enumerate(f):
                 tokens, offsets = [], []
@@ -212,9 +214,9 @@ class ShinraData:
         return tokens_list, text_offsets
 
     @staticmethod
-    def _find_word_alignment(tokens: list[str]) -> tuple[list[int], dict[int, int]]:
-        word_idxs: list[int] = []  # 単語先頭に相当するサブワードIDのリスト．長さは単語数と等しい
-        sub2word: dict[int, int] = {}
+    def _find_word_alignment(tokens: List[str]) -> Tuple[List[int], Dict[int, int]]:
+        word_idxs: List[int] = []  # 単語先頭に相当するサブワードIDのリスト．長さは単語数と等しい
+        sub2word: Dict[int, int] = {}
         for idx, token in enumerate(tokens):
             if not token.startswith("##"):
                 word_idxs.append(idx)
@@ -229,20 +231,20 @@ class ShinraData:
 
     # iobs = [sents1, sents2, ...]
     # sents1 = [[iob1_attr1, iob2_attr1, ...], [iob1_attr2, iob2_attr2, ...], ...]
-    def add_nes_from_iob(self, iobs: list[list[list[int]]]):
+    def add_nes_from_iob(self, iobs: List[List[List[int]]]):
         assert len(iobs) == len(
             self.valid_line_ids
         ), f"{len(iobs)}, {len(self.valid_line_ids)}"
-        self.nes: list[NamedEntity] = []
+        self.nes: List[NamedEntity] = []
 
         for line_id, sent_iob in zip(self.valid_line_ids, iobs):
-            word2subword: list[int] = self.word_alignments[line_id]
-            tokens: list[str] = self.tokens[line_id]
-            text_offsets: list[DataOffset] = self.text_offsets[line_id]
+            word2subword: List[int] = self.word_alignments[line_id]
+            tokens: List[str] = self.tokens[line_id]
+            text_offsets: List[DataOffset] = self.text_offsets[line_id]
             for iob, attr in zip(sent_iob, self.attributes):
                 text_offset = NEDataOffset(None, None, None)
                 token_offset = NEDataOffset(None, None, None)
-                iob: list[int] = [0] + iob + [0]
+                iob: List[int] = [0] + iob + [0]
                 for token_idx in range(1, len(iob)):
                     if is_chunk_end(iob[token_idx - 1], iob[token_idx]):
                         # token_idxは本来のものから+2されているので，word2subwordはneの外のはじめのtoken_id
@@ -280,8 +282,8 @@ class ShinraData:
                             word2subword[token_idx - 1]
                         ].start
 
-    def to_ner_examples(self) -> list[NerExample]:
-        outputs: list[NerExample] = []
+    def to_ner_examples(self) -> List[NerExample]:
+        outputs: List[NerExample] = []
         iobs = self.iob
         for idx in self.valid_line_ids:
             sent = NerExample(
@@ -293,8 +295,8 @@ class ShinraData:
         return outputs
 
     @property
-    def words(self) -> list[list[str]]:
-        all_words: list[list[str]] = []
+    def words(self) -> List[List[str]]:
+        all_words: List[List[str]] = []
         for tokens, word_alignments in zip(self.tokens, self.word_alignments):
             words = []
             prev_idx = 0
@@ -309,7 +311,7 @@ class ShinraData:
         return all_words
 
     @property
-    def iob(self) -> list[list[list[str]]]:
+    def iob(self) -> List[List[List[str]]]:
         """
         %%% IOB for ** only word-level iob2 tag **
         iobs = [sent, sent, ...]
@@ -317,7 +319,7 @@ class ShinraData:
 
         {"O": 0, "B": 1, "I": 2}
         """
-        iobs: list[list[list[str]]] = [
+        iobs: List[List[List[str]]] = [
             [["O"] * (len(tokens) - 1) for _ in self.attributes]
             for tokens in self.word_alignments
         ]
@@ -344,9 +346,9 @@ class ShinraData:
 
 @dataclass(frozen=True)
 class InputFeature:
-    input_ids: list[int]
-    word_idxs: list[int]
-    labels: Optional[list[list[int]]]
+    input_ids: List[int]
+    word_idxs: List[int]
+    labels: Optional[List[List[int]]]
 
 
 class NerDataset(Dataset):
@@ -355,19 +357,19 @@ class NerDataset(Dataset):
     PAD_FOR_INPUT_IDS = 0
     PAD_FOR_LABELS = -1
 
-    def __init__(self, examples: list[NerExample], tokenizer: PreTrainedTokenizer):
+    def __init__(self, examples: List[NerExample], tokenizer: PreTrainedTokenizer):
         self.tokenizer: PreTrainedTokenizer = tokenizer
         assert tokenizer.pad_token_id == self.PAD_FOR_INPUT_IDS
-        self.examples: list[NerExample] = examples
+        self.examples: List[NerExample] = examples
 
     @staticmethod
     def _convert_example_to_feature(
         example: NerExample, tokenizer: PreTrainedTokenizer
     ) -> InputFeature:
-        input_tokens: list[str] = (
+        input_tokens: List[str] = (
             ["[CLS]"] + example.tokens[: NerDataset.MAX_SEQ_LENGTH - 2] + ["[SEP]"]
         )
-        input_ids: list[int] = tokenizer.convert_tokens_to_ids(input_tokens)
+        input_ids: List[int] = tokenizer.convert_tokens_to_ids(input_tokens)
         word_idxs = [
             idx + 1 for idx in example.word_idxs if idx <= NerDataset.MAX_SEQ_LENGTH - 2
         ]
@@ -391,12 +393,12 @@ class NerDataset(Dataset):
     def __len__(self):
         return len(self.examples)
 
-    def __getitem__(self, idx: int) -> dict[str, Any]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         feature = self._convert_example_to_feature(self.examples[idx], self.tokenizer)
         return asdict(feature)
 
 
-def ner_collate_fn(features: list[dict[str, Any]]) -> dict[str, Any]:
+def ner_collate_fn(features: List[Dict[str, Any]]) -> Dict[str, Any]:
     first: dict = features[0]
     batch = {}
     for field in first.keys():
