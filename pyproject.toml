@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "yans2021-hackathon"
+version = "0.1.0"
+description = ""
+authors = [
+    "upura",
+    "TakamotoDaiki",
+    "nobu-g <ueda-n127@hotmail.co.jp>"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.11"
+numpy = "^1.21.2"
+scikit-learn = "^0.24.2"
+torch = "^1.9.0"
+transformers = "^4.9.2"
+seqeval = "^1.2.2"
+mlflow = "^1.19.0"
+fugashi = "^1.1.1"
+ipadic = "^1.0.0"
+dataclasses-json = "^0.5.4"
+
+[tool.poetry.dev-dependencies]
+flake8 = "*"
+ipython = "*"
+ipdb = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
