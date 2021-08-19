@@ -159,7 +159,7 @@ class ShinraData:
         with Pool() as p:
             args = [
                 (token_file, vocab, category, annotations, cls, attributes)
-                for token_file in tokens_dir.glob("tokens/*.txt")
+                for token_file in tokens_dir.glob("*.txt")
             ]
             docs = p.starmap(parse_token_file, tqdm(args, total=len(args)))
         return docs
