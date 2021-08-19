@@ -1,21 +1,21 @@
 import argparse
 import json
+from pathlib import Path
 
-import joblib
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 
-from dataset import NerDataset, ner_collate_fn
+from dataset import NerDataset, ShinraData, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def ner_for_shinradata(model, tokenizer, shinra_dataset, device):
-    ner_examples = shinra_dataset.to_ner_examples()
-    dataset = NerDataset(ner_examples, tokenizer)
+    processed_data = shinra_dataset.ner_inputs
+    dataset = NerDataset(processed_data, tokenizer)
     total_preds, _ = predict(model, dataset, device, sent_wise=True)
 
     shinra_dataset.add_nes_from_iob(total_preds)
@@ -78,7 +78,7 @@ def predict(model, dataset, device, sent_wise=False):
     return total_preds, total_trues
 
 
-def parse_arg() -> argparse.Namespace:
+def parse_arg():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -91,18 +91,20 @@ def parse_arg() -> argparse.Namespace:
         "--output_path", type=str, help="Specify attribute_list path in SHINRA2020"
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    return args
 
 
-def main():
+if __name__ == "__main__":
     args = parse_arg()
 
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
     # dataset = [ShinraData(), ....]
-    dataset = joblib.load("dataset.pkl")
-    dataset = [d for idx, d in enumerate(dataset) if idx < 20 and d.nes is not None]
+    dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
+    # dataset = [d for idx, d in enumerate(dataset) if idx < 20 and d.nes is not None]
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes))
     model.load_state_dict(torch.load(args.model_path))
@@ -115,7 +117,3 @@ def main():
                 [json.dumps(ne, ensure_ascii=False) for d in dataset for ne in d.nes]
             )
         )
-
-
-if __name__ == "__main__":
-    main()
