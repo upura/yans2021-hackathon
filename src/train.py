@@ -6,12 +6,12 @@ import joblib
 import mlflow
 import torch
 import torch.optim as optim
+import torch.nn as nn
 from seqeval.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer
 
 from dataset import NerDataset, ShinraData, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
@@ -42,7 +42,7 @@ class EarlyStopping:
         return False
 
 
-def parse_arg():
+def parse_arg() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -70,12 +70,10 @@ def parse_arg():
         "--note", type=str, help="Specify attribute_list path in SHINRA2020"
     )
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
-def evaluate(model, dataset, attributes, args):
+def evaluate(model: nn.Module, dataset: Dataset, attributes):
     total_preds, total_trues = predict(model, dataset, device)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
@@ -84,7 +82,7 @@ def evaluate(model, dataset, attributes, args):
     return f1
 
 
-def train(model, train_dataset, valid_dataset, attributes, args):
+def train(model: nn.Module, train_dataset: NerDataset, valid_dataset: Dataset, attributes, args):
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     # scheduler = get_scheduler(
     #     args.bsz, args.grad_acc, args.epoch, args.warmup, optimizer, len(train_dataset))
@@ -100,21 +98,12 @@ def train(model, train_dataset, valid_dataset, attributes, args):
 
         total_loss = 0
         model.train()
-        for step, inputs in enumerate(train_dataloader):
-            input_ids = inputs["tokens"]
-            word_idxs = inputs["word_idxs"]
-            labels = inputs["labels"]
+        for step, batch in enumerate(train_dataloader):
+            batch = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
+            input_ids = batch["input_ids"]  # (b, seq)
+            word_idxs = batch["word_idxs"]  # (b, word)
+            labels = batch["labels"]  # (attr, b, seq)
 
-            labels = [
-                pad_sequence(
-                    [torch.tensor(l) for l in label], padding_value=-1, batch_first=True
-                ).to(device)
-                for label in labels
-            ]
-
-            input_ids = pad_sequence(
-                [torch.tensor(t) for t in input_ids], padding_value=0, batch_first=True
-            ).to(device)
             attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
                 input_ids, word_idxs, pool_type="head"
@@ -123,15 +112,15 @@ def train(model, train_dataset, valid_dataset, attributes, args):
             outputs = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                labels=labels,
+                labels=labels.permute(2, 0, 1),  # (attr, b, seq)
                 pooling_matrix=pooling_matrix,
             )
 
             loss = outputs[0]
             loss.backward()
 
-            total_loss += loss.item()
-            mlflow.log_metric("Trian batch loss", loss.item(), step=(e + 1) * step)
+            total_loss += loss.item() * input_ids.size(0)
+            mlflow.log_metric("Train batch loss", loss.item(), step=(e + 1) * step)
 
             bar.set_description(f"[Epoch] {e + 1}")
             bar.set_postfix({"loss": loss.item()})
@@ -143,10 +132,10 @@ def train(model, train_dataset, valid_dataset, attributes, args):
                 # scheduler.step()
                 optimizer.zero_grad()
 
-        losses.append(total_loss / (step + 1))
-        mlflow.log_metric("Trian loss", losses[-1], step=e)
+        losses.append(total_loss / len(train_dataset))
+        mlflow.log_metric("Train loss", losses[-1], step=e)
 
-        valid_f1 = evaluate(model, valid_dataset, attributes, args)
+        valid_f1 = evaluate(model, valid_dataset, attributes)
         mlflow.log_metric("Valid F1", valid_f1, step=e)
 
         if early_stopping._score < valid_f1:
@@ -156,7 +145,7 @@ def train(model, train_dataset, valid_dataset, attributes, args):
             break
 
 
-if __name__ == "__main__":
+def main():
     args = parse_arg()
 
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
@@ -175,10 +164,10 @@ if __name__ == "__main__":
     model = BertForMultilabelNER(bert, len(dataset[0].attributes)).to(device)
     train_dataset, valid_dataset = train_test_split(dataset, test_size=0.1)
     train_dataset = NerDataset(
-        [d for train_d in train_dataset for d in train_d.ner_inputs], tokenizer
+        [d for train_d in train_dataset for d in train_d.to_ner_examples()], tokenizer
     )
     valid_dataset = NerDataset(
-        [d for valid_d in valid_dataset for d in valid_d.ner_inputs], tokenizer
+        [d for valid_d in valid_dataset for d in valid_d.to_ner_examples()], tokenizer
     )
 
     mlflow.start_run()
@@ -186,3 +175,7 @@ if __name__ == "__main__":
     train(model, train_dataset, valid_dataset, dataset[0].attributes, args)
     torch.save(model.state_dict(), args.model_path + "last.model")
     mlflow.end_run()
+
+
+if __name__ == "__main__":
+    main()
