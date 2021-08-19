@@ -1,8 +1,12 @@
+from typing import List
+
 import torch
 import torch.nn as nn
 
 
-def create_pooler_matrix(input_ids: torch.Tensor, word_idxs: list[list[int]], pool_type="head"):
+def create_pooler_matrix(
+    input_ids: torch.Tensor, word_idxs: List[List[int]], pool_type="head"
+):
     bsz, subword_len = input_ids.size()
     max_word_len = max([len(w) for w in word_idxs])
     pooler_matrix = torch.zeros(bsz * max_word_len * subword_len)
@@ -85,7 +89,9 @@ class BertForMultilabelNER(nn.Module):
 
         # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
         # logits = [classifier(hiddens) for classifier, hiddens in zip(self.classifiers, hiddens)]
-        logits = [classifier(sequence_output) for classifier in self.classifiers]  # (attr, b, )
+        logits = [
+            classifier(sequence_output) for classifier in self.classifiers
+        ]  # (attr, b, )
 
         loss = None
         if labels is not None:
