@@ -2,10 +2,11 @@ import argparse
 import json
 import os
 from pathlib import Path
+from typing import Tuple
 
 import joblib
 import torch
-from torch.nn.utils.rnn import pad_sequence
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 
@@ -25,22 +26,27 @@ def ner_for_shinradata(model, tokenizer, shinra_dataset, device):
     return shinra_dataset
 
 
-def predict(model, dataset, device, sent_wise=False):
+def predict(
+    model: nn.Module,
+    dataset: NerDataset,
+    device,
+    sent_wise=False
+) -> Tuple[list, list]:
     model.eval()
     dataloader = DataLoader(dataset, batch_size=8, collate_fn=ner_collate_fn)
 
     total_preds = []
     total_trues = []
     with torch.no_grad():
-        for step, inputs in enumerate(dataloader):
-            input_ids = inputs["tokens"]
-            word_idxs = inputs["word_idxs"]
+        for step, batch in enumerate(dataloader):
+            batch = {
+                k: (v.to(device) if isinstance(v, torch.Tensor) else v)
+                for k, v in batch.items()
+            }
+            input_ids = batch["input_ids"]  # (b, seq)
+            word_idxs = batch["word_idxs"]  # (b, word)
+            labels = batch["labels"]  # (b, seq, attr) or None
 
-            labels = inputs["labels"]
-
-            input_ids = pad_sequence(
-                [torch.tensor(t) for t in input_ids], padding_value=0, batch_first=True
-            ).to(device)
             attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
                 input_ids, word_idxs, pool_type="head"
@@ -55,7 +61,7 @@ def predict(model, dataset, device, sent_wise=False):
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
-            total_trues.append(labels if labels[0] is not None else preds)
+            total_trues.append(labels.permute(2, 0, 1) if labels is not None else preds)
 
     attr_num = len(total_preds[0])
     total_preds = [

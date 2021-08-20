@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from seqeval.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
@@ -73,7 +73,7 @@ def parse_arg() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def evaluate(model: nn.Module, dataset: Dataset, attributes):
+def evaluate(model: nn.Module, dataset: NerDataset, attributes):
     total_preds, total_trues = predict(model, dataset, device)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
@@ -85,7 +85,7 @@ def evaluate(model: nn.Module, dataset: Dataset, attributes):
 def train(
     model: nn.Module,
     train_dataset: NerDataset,
-    valid_dataset: Dataset,
+    valid_dataset: NerDataset,
     attributes,
     args,
 ):
@@ -111,7 +111,7 @@ def train(
             }
             input_ids = batch["input_ids"]  # (b, seq)
             word_idxs = batch["word_idxs"]  # (b, word)
-            labels = batch["labels"]  # (attr, b, seq)
+            labels = batch["labels"]  # (b, seq, attr)
 
             attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
