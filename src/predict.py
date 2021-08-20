@@ -100,7 +100,7 @@ def parse_arg() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode", type=str, choices=["leaderboard", "all"], default="all",
-        help="Specify attribute_list path in SHINRA2020"
+        help="Specify 'leaderboard' to evaluate leaderboard data and specify 'all' to evaluate all data"
     )
 
     return parser.parse_args()
