@@ -97,13 +97,17 @@ class ShinraData:
         )
 
     @classmethod
-    def from_shinra2020_format(cls, input_path: Union[Path, str]) -> List["ShinraData"]:
+    def from_shinra2020_format(
+        cls,
+        input_path: Union[Path, str],
+        mode: str = "all",  # "train", "leaderboard", or "all"
+    ) -> List["ShinraData"]:
         input_path = Path(input_path)
         category = input_path.stem
         annotation_path = input_path / f"{category}_dist.json"
         vocab_path = input_path / "vocab.txt"
         attributes_path = input_path / "attributes.txt"
-        tokens_dir = input_path / "tokens"
+        tokens_dir = input_path / "tokenized" / mode
 
         annotations: Dict[str, List[Annotation]] = cls._load_annotation(annotation_path)
         vocab: List[str] = cls._load_vocab(vocab_path)

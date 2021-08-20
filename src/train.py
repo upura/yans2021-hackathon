@@ -165,16 +165,13 @@ def main():
     # dataset = [ShinraData(), ....]
     dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
     dataset_cache_dir.mkdir(exist_ok=True)
-    cache_path = dataset_cache_dir / f"{category}_dataset.pkl"
+    cache_path = dataset_cache_dir / f"{category}_train_dataset.pkl"
     if cache_path.exists():
         print(f"Loading cached dataset from {cache_path}")
         dataset = joblib.load(cache_path)
     else:
         print(f"Cached dataset not found. Building one from {args.input_path}")
-        dataset = ShinraData.from_shinra2020_format(Path(args.input_path))
-        cache_path_all = dataset_cache_dir / f"{category}_all_dataset.pkl"
-        joblib.dump(dataset, cache_path_all, compress=3)
-        dataset = [d for d in dataset if d.nes is not None]
+        dataset = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
         joblib.dump(dataset, cache_path, compress=3)
 
     model = BertForMultilabelNER(bert, len(dataset[0].attributes)).to(device)

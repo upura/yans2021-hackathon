@@ -9,7 +9,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 
-from dataset import NerDataset, ner_collate_fn
+from dataset import ShinraData, NerDataset, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -92,6 +92,10 @@ def parse_arg() -> argparse.Namespace:
     parser.add_argument(
         "--output_path", type=str, help="Specify attribute_list path in SHINRA2020"
     )
+    parser.add_argument(
+        "--mode", type=str, choices=["leaderboard", "all"], default="all",
+        help="Specify attribute_list path in SHINRA2020"
+    )
 
     return parser.parse_args()
 
@@ -106,15 +110,21 @@ def main():
 
     # dataset = [ShinraData(), ....]
     dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
-    cache_path = dataset_cache_dir / f"{category}_all_dataset.pkl"
-    dataset = joblib.load(cache_path)
-    dataset = [d for idx, d in enumerate(dataset) if idx < 20 and d.nes is not None]
+    dataset_cache_dir.mkdir(exist_ok=True)
+    cache_path = dataset_cache_dir / f"{category}_{args.mode}_dataset.pkl"
+    if cache_path.exists():
+        print(f"Loading cached dataset from {cache_path}")
+        shinra_dataset = joblib.load(cache_path)
+    else:
+        print(f"Cached dataset not found. Building one from {args.input_path}")
+        shinra_dataset = ShinraData.from_shinra2020_format(Path(args.input_path), mode=args.mode)
+        joblib.dump(shinra_dataset, cache_path, compress=3)
 
-    model = BertForMultilabelNER(bert, len(dataset[0].attributes))
+    model = BertForMultilabelNER(bert, len(shinra_dataset[0].attributes))
     model.load_state_dict(torch.load(args.model_path))
     model.to(device)
 
-    dataset = [ner_for_shinradata(model, tokenizer, d, device) for d in dataset]
+    dataset = [ner_for_shinradata(model, tokenizer, ds, device) for ds in shinra_dataset]
     with open(args.output_path, "w") as f:
         f.write(
             "\n".join(
