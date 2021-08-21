@@ -63,10 +63,10 @@ class BertForMultilabelNER(nn.Module):
         labels=None,  # (b, seq, attr)
     ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
         batch_size, word_len, sequence_len = pooling_matrix.size()
-        outputs = self.bert(input_ids, attention_mask=attention_mask)
-        sequence_output = outputs[0]  # (b, seq, hid)
+        bert_out = self.bert(input_ids, attention_mask=attention_mask)
         # create word-level representations using pooler matrix
-        sequence_output = torch.bmm(pooling_matrix, sequence_output)  # (b, word, hid)
+        # (b, word, seq), (b, seq, hid) -> (b, word, hid)
+        sequence_output = torch.bmm(pooling_matrix, bert_out.last_hidden_state)
         sequence_output = self.dropout(sequence_output)  # (b, word, hid)
 
         # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
