@@ -79,7 +79,10 @@ def predict(
         for attr in range(num_attr)
     ]  # (attr, N, seq)
     total_trues_reshaped = [
-        [true for trues in total_trues for true in trues[attr] if true != NerDataset.PAD_FOR_LABELS]
+        [
+            [t for t in true if t != NerDataset.PAD_FOR_LABELS]
+            for trues in total_trues for true in trues[attr]
+        ]
         for attr in range(num_attr)
     ]  # (attr, N, seq)
 
