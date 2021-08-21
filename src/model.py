@@ -2,6 +2,7 @@ from typing import List
 
 import torch
 import torch.nn as nn
+from transformers import BertModel
 
 
 def create_pooler_matrix(
@@ -34,19 +35,24 @@ def create_pooler_matrix(
 
 
 class BertForMultilabelNER(nn.Module):
-    def __init__(self, bert, attribute_num, dropout=0.1):
+    def __init__(
+        self,
+        bert: BertModel,
+        attribute_num: int,
+        dropout: float = 0.1
+    ):
         super().__init__()
-        self.bert = bert
+        self.bert: BertModel = bert
         self.dropout = nn.Dropout(dropout)
 
         # classifier that classifies token into IOB tag (B, I, O) for each attribute
-        output_layer = [nn.Linear(768, 768) for i in range(attribute_num)]
+        output_layer = [nn.Linear(768, 768) for _ in range(attribute_num)]
         self.output_layer = nn.ModuleList(output_layer)
 
         self.relu = nn.ReLU()
 
         # classifier that classifies token into IOB tag (B, I, O) for each attribute
-        classifiers = [nn.Linear(768, 3) for i in range(attribute_num)]
+        classifiers = [nn.Linear(768, 3) for _ in range(attribute_num)]
         self.classifiers = nn.ModuleList(classifiers)
 
     def predict(
@@ -62,7 +68,7 @@ class BertForMultilabelNER(nn.Module):
             pooling_matrix=pooling_matrix,
         )[0]
         # labels = [torch.argmax(logit.detach().cpu(), dim=-1) for logit in logits]
-        labels = [self.viterbi(logit.detach().cpu()) for logit in logits]
+        labels = [self._viterbi(logit.detach().cpu()) for logit in logits]
 
         truncated_labels = [
             [
@@ -106,7 +112,8 @@ class BertForMultilabelNER(nn.Module):
         output = (logits,) + outputs[2:]
         return ((loss,) + output) if loss is not None else output
 
-    def viterbi(self, logits, penalty=float("inf")):
+    @staticmethod
+    def _viterbi(logits, penalty=float("inf")):
         num_tags = 3
 
         # 0: O, 1: B, 2: I
