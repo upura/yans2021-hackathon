@@ -165,9 +165,8 @@ def main():
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
-    category = str(args.input_path).split("/")[-1]
-
     # dataset = [ShinraData(), ....]
+    category = Path(args.input_path).parts[-1]
     dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
     dataset_cache_dir.mkdir(exist_ok=True)
     cache_path = dataset_cache_dir / f"{category}_train_dataset.pkl"
