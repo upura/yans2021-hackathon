@@ -74,7 +74,7 @@ def parse_arg() -> argparse.Namespace:
 
 
 def evaluate(model: nn.Module, dataset: NerDataset, attributes):
-    total_preds, total_trues = predict(model, dataset)
+    total_preds, total_trues = predict(model, dataset, sent_wise=False)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
 

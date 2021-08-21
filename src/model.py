@@ -69,7 +69,6 @@ class BertForMultilabelNER(nn.Module):
         sequence_output = self.dropout(sequence_output)  # (b, seq, hid)
 
         # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
-        # logits = [classifier(hiddens) for classifier, hiddens in zip(self.classifiers, hiddens)]
         logits = [
             classifier(sequence_output) for classifier in self.classifiers
         ]  # (attr, b, seq, 3)
@@ -82,20 +81,19 @@ class BertForMultilabelNER(nn.Module):
             for label, logit in zip(labels, logits):
                 loss += loss_fn(logit[:, :-1, :].reshape(-1, 3), label.view(-1)) / len(labels)
 
-        output = (logits,) + outputs[2:]
-        return loss, output
+        return loss, logits
 
     @staticmethod
-    def viterbi(logits, penalty=float("inf")):
+    def viterbi(logits, penalty=float("inf")) -> List[List[int]]:
         num_tags = 3
 
         # 0: O, 1: B, 2: I
         penalties = torch.zeros((num_tags, num_tags))
         penalties[0][2] = penalty
 
-        all_preds = []
+        all_preds: List[List[int]] = []
         for logit in logits:
-            pred_tags = [0]
+            pred_tags: List[int] = [0]
             for l in logit:
                 transit_penalty = penalties[pred_tags[-1]]
                 l = l - transit_penalty

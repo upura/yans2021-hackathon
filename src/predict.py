@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List
 
 import joblib
 import torch
@@ -30,15 +30,15 @@ def predict(
     model: nn.Module,
     dataset: NerDataset,
     sent_wise: bool = False
-) -> Tuple[list, list]:
+) -> Tuple[List[List[List[int]]], List[List[torch.Tensor]]]:
 
     dataloader = DataLoader(dataset, batch_size=8, collate_fn=ner_collate_fn)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
 
-    total_preds = []
-    total_trues = []
+    total_preds: List[List[List[List[int]]]] = []
+    total_trues: List[torch.Tensor] = []
     with torch.no_grad():
         for step, batch in enumerate(dataloader):
             batch = {
@@ -54,45 +54,46 @@ def predict(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
 
+            # (attr, b, seq, 3)
             _, logits = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 pooling_matrix=pooling_matrix,
             )
-            pred_labels = [BertForMultilabelNER.viterbi(logit.detach().cpu()) for logit in logits[0]]
-            preds = [
-                [
+            preds: List[List[List[int]]] = []
+            # attribute loop
+            for logit in logits:
+                attr_labels: List[List[int]] = BertForMultilabelNER.viterbi(logit.detach().cpu())  # (b, seq)
+                preds.append([
                     label[: len(word_idx) - 1]
                     for label, word_idx in zip(attr_labels, word_idxs)
-                ]
-                for attr_labels in pred_labels
-            ]
+                ])
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
             total_trues.append(labels.permute(2, 0, 1).contiguous() if labels is not None else preds)
 
     num_attr: int = len(total_preds[0])
-    total_preds = [
+    total_preds_reshaped = [
         [pred for preds in total_preds for pred in preds[attr]]
         for attr in range(num_attr)
     ]
-    total_trues = [
+    total_trues_reshaped = [
         [true for trues in total_trues for true in trues[attr]]
         for attr in range(num_attr)
     ]
 
     if sent_wise:
-        total_preds = [
+        total_preds_reshaped = [
             [total_preds[attr][idx] for attr in range(num_attr)]
             for idx in range(len(total_preds[0]))
         ]
-        total_trues = [
+        total_trues_reshaped = [
             [total_trues[attr][idx] for attr in range(num_attr)]
             for idx in range(len(total_trues[0]))
         ]
 
-    return total_preds, total_trues
+    return total_preds_reshaped, total_trues_reshaped
 
 
 def parse_arg() -> argparse.Namespace:
