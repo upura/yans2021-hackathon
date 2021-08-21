@@ -56,11 +56,12 @@ class BertForMultilabelNER(nn.Module):
         word_idxs=None,
         pooling_matrix=None,
     ):
-        logits = self.forward(
+        _, logits = self.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             pooling_matrix=pooling_matrix,
-        )[0]
+        )
+        logits = logits[0]
         # labels = [torch.argmax(logit.detach().cpu(), dim=-1) for logit in logits]
         labels = [self.viterbi(logit.detach().cpu()) for logit in logits]
 
@@ -82,29 +83,27 @@ class BertForMultilabelNER(nn.Module):
         pooling_matrix=None,
     ):
         outputs = self.bert(input_ids, attention_mask=attention_mask)
-        sequence_output = outputs[0]
+        sequence_output = outputs[0]  # (b, seq, hid)
         # create word-level representations using pooler matrix
-        sequence_output = torch.bmm(pooling_matrix, sequence_output)
-        sequence_output = self.dropout(sequence_output)
+        sequence_output = torch.bmm(pooling_matrix, sequence_output)  # (b, seq, hid)
+        sequence_output = self.dropout(sequence_output)  # (b, seq, hid)
 
         # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
         # logits = [classifier(hiddens) for classifier, hiddens in zip(self.classifiers, hiddens)]
         logits = [
             classifier(sequence_output) for classifier in self.classifiers
-        ]  # (attr, b, )
+        ]  # (attr, b, seq, 3)
 
         loss = None
         if labels is not None:
-            loss_fct = nn.CrossEntropyLoss(ignore_index=-1)
+            loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
             loss = 0
-
+            labels = labels.permute(2, 0, 1).contiguous()  # (attr, b, seq)
             for label, logit in zip(labels, logits):
-                loss += loss_fct(logit[:, :-1, :].reshape(-1, 3), label.view(-1)) / len(
-                    labels
-                )
+                loss += loss_fn(logit[:, :-1, :].reshape(-1, 3), label.view(-1)) / len(labels)
 
         output = (logits,) + outputs[2:]
-        return ((loss,) + output) if loss is not None else output
+        return loss, output
 
     def viterbi(self, logits, penalty=float("inf")):
         num_tags = 3

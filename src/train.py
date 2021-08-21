@@ -123,14 +123,16 @@ def train(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
 
-            outputs = model(
+            loss, output = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                labels=labels.permute(2, 0, 1),  # (attr, b, seq)
+                labels=labels,
                 pooling_matrix=pooling_matrix,
             )
 
-            loss = outputs[0]
+            if len(loss.size()) > 0:
+                loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
             loss.backward()
 
             total_loss += loss.item() * input_ids.size(0)
