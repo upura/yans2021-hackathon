@@ -54,7 +54,7 @@ def predict(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
 
-            # (attr, b, seq, 3)
+            # (b, seq, attr, 3)
             _, logits = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -62,8 +62,8 @@ def predict(
             )
             preds: List[List[List[int]]] = []
             # attribute loop
-            for logit in logits:
-                attr_labels: List[List[int]] = BertForMultilabelNER.viterbi(logit.detach().cpu())  # (b, seq)
+            for attr_idx in range(logits.size(2)):
+                attr_labels: List[List[int]] = BertForMultilabelNER.viterbi(logits[:, :, attr_idx, :].detach().cpu())  # (b, seq)
                 preds.append([
                     label[: len(word_idx) - 1]
                     for label, word_idx in zip(attr_labels, word_idxs)
