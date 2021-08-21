@@ -18,7 +18,7 @@ from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
 from util import decode_iob
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+# device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class EarlyStopping:
@@ -74,7 +74,7 @@ def parse_arg() -> argparse.Namespace:
 
 
 def evaluate(model: nn.Module, dataset: NerDataset, attributes):
-    total_preds, total_trues = predict(model, dataset, device)
+    total_preds, total_trues = predict(model, dataset)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
 
@@ -93,7 +93,12 @@ def train(
     # scheduler = get_scheduler(
     #     args.bsz, args.grad_acc, args.epoch, args.warmup, optimizer, len(train_dataset))
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     early_stopping = EarlyStopping(patience=10, verbose=1)
+
+    # setup model
+    model.to(device)
+    model = torch.nn.DataParallel(model)
 
     losses = []
     for e in range(args.epoch):
@@ -174,7 +179,7 @@ def main():
         dataset = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
         joblib.dump(dataset, cache_path, compress=3)
 
-    model = BertForMultilabelNER(bert, len(dataset[0].attributes)).to(device)
+    model = BertForMultilabelNER(bert, len(dataset[0].attributes))
     train_dataset, valid_dataset = train_test_split(dataset, test_size=0.1)
     train_dataset = NerDataset(
         [d for train_d in train_dataset for d in train_d.to_ner_examples()], tokenizer

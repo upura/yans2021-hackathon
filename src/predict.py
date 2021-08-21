@@ -13,13 +13,11 @@ from transformers import AutoModel, AutoTokenizer
 from dataset import ShinraData, NerDataset, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-
-def ner_for_shinradata(model, tokenizer, shinra_dataset, device):
+def ner_for_shinradata(model, tokenizer, shinra_dataset):
     ner_examples = shinra_dataset.to_ner_examples()
     dataset = NerDataset(ner_examples, tokenizer)
-    total_preds, _ = predict(model, dataset, device, sent_wise=True)
+    total_preds, _ = predict(model, dataset, sent_wise=True)
 
     shinra_dataset.add_nes_from_iob(total_preds)
 
@@ -29,11 +27,13 @@ def ner_for_shinradata(model, tokenizer, shinra_dataset, device):
 def predict(
     model: nn.Module,
     dataset: NerDataset,
-    device,
     sent_wise=False
 ) -> Tuple[list, list]:
     model.eval()
     dataloader = DataLoader(dataset, batch_size=8, collate_fn=ner_collate_fn)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.to(device)
 
     total_preds = []
     total_trues = []
@@ -128,9 +128,8 @@ def main():
 
     model = BertForMultilabelNER(bert, len(shinra_dataset[0].attributes))
     model.load_state_dict(torch.load(args.model_path))
-    model.to(device)
 
-    dataset = [ner_for_shinradata(model, tokenizer, ds, device) for ds in shinra_dataset]
+    dataset = [ner_for_shinradata(model, tokenizer, ds) for ds in shinra_dataset]
     with open(args.output_path, "w") as f:
         f.write(
             "\n".join(
