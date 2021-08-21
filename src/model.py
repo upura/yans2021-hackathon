@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple, Optional
 
 import torch
 import torch.nn as nn
@@ -44,42 +44,42 @@ class BertForMultilabelNER(nn.Module):
         super().__init__()
         self.bert: BertModel = bert
         self.dropout = nn.Dropout(dropout)
+        self.num_attributes: int = attribute_num
 
         # classifier that classifies token into IOB tag (B, I, O) for each attribute
-        output_layer = [nn.Linear(768, 768) for _ in range(attribute_num)]
-        self.output_layer = nn.ModuleList(output_layer)
+        # self.output_layer = nn.Linear(768, 768 * attribute_num)
 
         self.relu = nn.ReLU()
 
         # classifier that classifies token into IOB tag (B, I, O) for each attribute
-        classifiers = [nn.Linear(768, 3) for _ in range(attribute_num)]
-        self.classifiers = nn.ModuleList(classifiers)
+        bert_hidden_size = self.bert.config.hidden_size
+        self.classifier = nn.Linear(bert_hidden_size, self.num_attributes * 3)
 
     def forward(
         self,
-        input_ids=None,
-        attention_mask=None,
-        labels=None,
-        pooling_matrix=None,
-    ):
+        input_ids: torch.Tensor,  # (b, seq)
+        attention_mask: torch.Tensor,  # (b, seq)
+        pooling_matrix: torch.Tensor,  # (b, word, seq)
+        labels=None,  # (b, seq, attr)
+    ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
+        batch_size, word_len, sequence_len = pooling_matrix.size()
         outputs = self.bert(input_ids, attention_mask=attention_mask)
         sequence_output = outputs[0]  # (b, seq, hid)
         # create word-level representations using pooler matrix
-        sequence_output = torch.bmm(pooling_matrix, sequence_output)  # (b, seq, hid)
-        sequence_output = self.dropout(sequence_output)  # (b, seq, hid)
+        sequence_output = torch.bmm(pooling_matrix, sequence_output)  # (b, word, hid)
+        sequence_output = self.dropout(sequence_output)  # (b, word, hid)
 
         # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
-        logits = [
-            classifier(sequence_output) for classifier in self.classifiers
-        ]  # (attr, b, seq, 3)
+        # (b, word, hid) -> (b, word, attr*3) -> (b, word, attr, 3)
+        logits = self.classifier(sequence_output).view(batch_size, word_len, self.num_attributes, 3)
 
         loss = None
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
             loss = 0
-            labels = labels.permute(2, 0, 1).contiguous()  # (attr, b, seq)
-            for label, logit in zip(labels, logits):
-                loss += loss_fn(logit[:, :-1, :].reshape(-1, 3), label.view(-1)) / len(labels)
+            for attr_idx in range(self.num_attributes):
+                loss += loss_fn(logits[:, :-1, attr_idx, :].reshape(-1, 3), labels[:, :, attr_idx].view(-1))
+            loss /= self.num_attributes
 
         return loss, logits
 
