@@ -30,7 +30,7 @@ def predict(
     model: nn.Module,
     dataset: NerDataset,
     sent_wise: bool = False
-) -> Tuple[List[List[List[int]]], List[List[torch.Tensor]]]:
+) -> Tuple[List[List[List[int]]], List[List[List[int]]]]:
 
     dataloader = DataLoader(dataset, batch_size=8, collate_fn=ner_collate_fn)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -38,7 +38,7 @@ def predict(
     model.eval()
 
     total_preds: List[List[List[List[int]]]] = []
-    total_trues: List[torch.Tensor] = []
+    total_trues: List[List[List[List[int]]]] = []
     with torch.no_grad():
         for step, batch in enumerate(dataloader):
             batch = {
@@ -60,7 +60,7 @@ def predict(
                 attention_mask=attention_mask,
                 pooling_matrix=pooling_matrix,
             )
-            preds: List[List[List[int]]] = []
+            preds: List[List[List[int]]] = []  # (attr, b, seq)
             # attribute loop
             for attr_idx in range(logits.size(2)):
                 attr_labels: List[List[int]] = BertForMultilabelNER.viterbi(logits[:, :, attr_idx, :].detach().cpu())  # (b, seq)
@@ -71,25 +71,25 @@ def predict(
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
-            total_trues.append(labels.permute(2, 0, 1).contiguous() if labels is not None else preds)
+            total_trues.append(labels.permute(2, 0, 1).tolist() if labels is not None else preds)
 
     num_attr: int = len(total_preds[0])
     total_preds_reshaped = [
         [pred for preds in total_preds for pred in preds[attr]]
         for attr in range(num_attr)
-    ]
+    ]  # (attr, N, seq)
     total_trues_reshaped = [
-        [true for trues in total_trues for true in trues[attr]]
+        [true for trues in total_trues for true in trues[attr] if true != NerDataset.PAD_FOR_LABELS]
         for attr in range(num_attr)
-    ]
+    ]  # (attr, N, seq)
 
     if sent_wise:
         total_preds_reshaped = [
-            [total_preds[attr][idx] for attr in range(num_attr)]
+            [total_preds_reshaped[attr][idx] for attr in range(num_attr)]
             for idx in range(len(total_preds[0]))
         ]
         total_trues_reshaped = [
-            [total_trues[attr][idx] for attr in range(num_attr)]
+            [total_trues_reshaped[attr][idx] for attr in range(num_attr)]
             for idx in range(len(total_trues[0]))
         ]
 
