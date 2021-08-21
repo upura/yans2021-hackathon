@@ -49,32 +49,6 @@ class BertForMultilabelNER(nn.Module):
         classifiers = [nn.Linear(768, 3) for i in range(attribute_num)]
         self.classifiers = nn.ModuleList(classifiers)
 
-    def predict(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        word_idxs=None,
-        pooling_matrix=None,
-    ):
-        _, logits = self.forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            pooling_matrix=pooling_matrix,
-        )
-        logits = logits[0]
-        # labels = [torch.argmax(logit.detach().cpu(), dim=-1) for logit in logits]
-        labels = [self.viterbi(logit.detach().cpu()) for logit in logits]
-
-        truncated_labels = [
-            [
-                label[: len(word_idx) - 1]
-                for label, word_idx in zip(attr_labels, word_idxs)
-            ]
-            for attr_labels in labels
-        ]
-
-        return truncated_labels
-
     def forward(
         self,
         input_ids=None,
@@ -105,7 +79,8 @@ class BertForMultilabelNER(nn.Module):
         output = (logits,) + outputs[2:]
         return loss, output
 
-    def viterbi(self, logits, penalty=float("inf")):
+    @staticmethod
+    def viterbi(logits, penalty=float("inf")):
         num_tags = 3
 
         # 0: O, 1: B, 2: I
