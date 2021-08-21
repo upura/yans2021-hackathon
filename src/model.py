@@ -82,22 +82,3 @@ class BertForMultilabelNER(nn.Module):
             loss /= self.num_attributes
 
         return loss, logits
-
-    @staticmethod
-    def viterbi(logits, penalty=float("inf")) -> List[List[int]]:
-        num_tags = 3
-
-        # 0: O, 1: B, 2: I
-        penalties = torch.zeros((num_tags, num_tags))
-        penalties[0][2] = penalty
-
-        all_preds: List[List[int]] = []
-        for logit in logits:
-            pred_tags: List[int] = [0]
-            for l in logit:
-                transit_penalty = penalties[pred_tags[-1]]
-                l = l - transit_penalty
-                tag = torch.argmax(l, dim=-1)
-                pred_tags.append(tag.item())
-            all_preds.append(pred_tags[1:])
-        return all_preds

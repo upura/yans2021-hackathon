@@ -63,7 +63,7 @@ def predict(
             preds: List[List[List[int]]] = []  # (attr, b, seq)
             # attribute loop
             for attr_idx in range(logits.size(2)):
-                attr_labels: List[List[int]] = BertForMultilabelNER.viterbi(logits[:, :, attr_idx, :].detach().cpu())  # (b, seq)
+                attr_labels: List[List[int]] = viterbi(logits[:, :, attr_idx, :].detach().cpu())  # (b, seq)
                 preds.append([
                     label[: len(word_idx) - 1]
                     for label, word_idx in zip(attr_labels, word_idxs)
@@ -94,6 +94,25 @@ def predict(
         ]
 
     return total_preds_reshaped, total_trues_reshaped
+
+
+def viterbi(logits, penalty=float("inf")) -> List[List[int]]:
+    num_tags = 3
+
+    # 0: O, 1: B, 2: I
+    penalties = torch.zeros((num_tags, num_tags))
+    penalties[0][2] = penalty
+
+    all_preds: List[List[int]] = []
+    for logit in logits:
+        pred_tags: List[int] = [0]
+        for l in logit:
+            transit_penalty = penalties[pred_tags[-1]]
+            l = l - transit_penalty
+            tag = torch.argmax(l, dim=-1)
+            pred_tags.append(tag.item())
+        all_preds.append(pred_tags[1:])
+    return all_preds
 
 
 def parse_arg() -> argparse.Namespace:
