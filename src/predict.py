@@ -54,16 +54,23 @@ def predict(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
 
-            preds = model.predict(
+            _, logits = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                word_idxs=word_idxs,
                 pooling_matrix=pooling_matrix,
             )
+            pred_labels = [BertForMultilabelNER.viterbi(logit.detach().cpu()) for logit in logits[0]]
+            preds = [
+                [
+                    label[: len(word_idx) - 1]
+                    for label, word_idx in zip(attr_labels, word_idxs)
+                ]
+                for attr_labels in pred_labels
+            ]
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
-            total_trues.append(labels.permute(2, 0, 1) if labels is not None else preds)
+            total_trues.append(labels.permute(2, 0, 1).contiguous() if labels is not None else preds)
 
     num_attr: int = len(total_preds[0])
     total_preds = [
