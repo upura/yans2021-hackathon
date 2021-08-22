@@ -36,8 +36,6 @@ def predict(
     num_gpus = torch.cuda.device_count()
     dataloader = DataLoader(dataset, batch_size=batch_size_per_gpu * num_gpus, collate_fn=ner_collate_fn)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    model = torch.nn.DataParallel(model)
     model.eval()
 
     total_preds: List[List[List[List[int]]]] = []
@@ -165,6 +163,8 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     state_dict = torch.load(args.model_path, map_location=device)
     model.load_state_dict(OrderedDict({k.replace('module.', ''): v for k, v in state_dict.items()}))
+    model.to(device)
+    model = torch.nn.DataParallel(model)
 
     # dataset = [ner_for_shinradata(model, tokenizer, ds) for ds in shinra_dataset]
     with open(args.output_path, "w") as f:
