@@ -40,6 +40,7 @@ class Annotation:
     ENE: str
 
 
+@dataclass_json
 @dataclass
 class NEDataOffset:
     start: Optional[OffsetPoint]
@@ -47,6 +48,7 @@ class NEDataOffset:
     text: Optional[str]
 
 
+@dataclass_json
 @dataclass(frozen=True)
 class NamedEntity:
     page_id: str
