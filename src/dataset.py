@@ -51,7 +51,7 @@ class NEDataOffset:
 @dataclass_json
 @dataclass(frozen=True)
 class NamedEntity:
-    page_id: str
+    page_id: int  # int 型じゃないと submit に失敗する
     title: str
     attribute: str
     text_offset: NEDataOffset
@@ -60,7 +60,7 @@ class NamedEntity:
     @classmethod
     def from_annotation(cls, annotation: Annotation):
         return cls(
-            annotation.page_id,
+            int(annotation.page_id),
             annotation.title,
             annotation.attribute,
             text_offset=NEDataOffset(
@@ -270,7 +270,7 @@ class ShinraData:
 
                         self.nes.append(
                             NamedEntity(
-                                page_id=self.page_id,
+                                page_id=int(self.page_id),
                                 title=self.page_title,
                                 attribute=attr,
                                 text_offset=text_offset,
