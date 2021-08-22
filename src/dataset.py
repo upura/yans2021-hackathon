@@ -367,7 +367,7 @@ class NerDataset(Dataset):
 
     @staticmethod
     def _shinra2examples(shinra_data: ShinraData) -> Generator[NerExample, None, None]:
-        iobs = shinra_data.to_iob()
+        iobs = shinra_data.to_iob() if shinra_data.nes is not None else None
         for idx in shinra_data.valid_line_ids:
             example = NerExample(
                 tokens=shinra_data.tokens[idx],
