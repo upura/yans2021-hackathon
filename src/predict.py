@@ -8,6 +8,7 @@ import joblib
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer
 
 from dataset import ShinraData, NerDataset, ner_collate_fn
@@ -31,7 +32,6 @@ def predict(
     dataset: NerDataset,
     sent_wise: bool = False
 ) -> Tuple[List[List[List[int]]], List[List[List[int]]]]:
-
     batch_size_per_gpu = 16
     num_gpus = torch.cuda.device_count()
     dataloader = DataLoader(dataset, batch_size=batch_size_per_gpu * num_gpus, collate_fn=ner_collate_fn)
@@ -43,7 +43,7 @@ def predict(
     total_preds: List[List[List[List[int]]]] = []
     total_trues: List[List[List[List[int]]]] = []
     with torch.no_grad():
-        for step, batch in enumerate(dataloader):
+        for step, batch in tqdm(enumerate(dataloader)):
             batch = {
                 k: (v.to(device) if isinstance(v, torch.Tensor) else v)
                 for k, v in batch.items()
