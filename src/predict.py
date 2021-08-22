@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 from collections import OrderedDict
 from pathlib import Path
@@ -168,7 +167,8 @@ def main():
     with open(args.output_path, "w") as f:
         for data in shinra_datum:
             processed_data = ner_for_shinradata(model, tokenizer, data)
-            f.write("\n".join(ne.to_json() for ne in processed_data.nes) + "\n")
+            if processed_data.nes:
+                f.write("\n".join(ne.to_json() for ne in processed_data.nes) + "\n")
 
 
 if __name__ == "__main__":
