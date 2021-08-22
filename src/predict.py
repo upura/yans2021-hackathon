@@ -34,7 +34,12 @@ def predict(
 ) -> Tuple[List[List[List[int]]], List[List[List[int]]]]:
     batch_size_per_gpu = 16
     num_gpus = torch.cuda.device_count()
-    dataloader = DataLoader(dataset, batch_size=batch_size_per_gpu * num_gpus, collate_fn=ner_collate_fn)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size_per_gpu * num_gpus,
+        collate_fn=ner_collate_fn,
+        num_workers=4,
+    )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.eval()
 

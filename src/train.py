@@ -103,7 +103,7 @@ def train(
     losses = []
     for e in range(args.epoch):
         train_dataloader = DataLoader(
-            train_dataset, batch_size=args.bsz, collate_fn=ner_collate_fn, shuffle=True
+            train_dataset, batch_size=args.bsz, collate_fn=ner_collate_fn, shuffle=True, num_workers=4,
         )
         bar = tqdm(total=len(train_dataset))
 
