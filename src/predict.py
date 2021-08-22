@@ -90,11 +90,11 @@ def predict(
     if sent_wise:
         total_preds_reshaped = [
             [total_preds_reshaped[attr][idx] for attr in range(num_attr)]
-            for idx in range(len(total_preds[0]))
+            for idx in range(len(total_preds_reshaped[0]))
         ]
         total_trues_reshaped = [
             [total_trues_reshaped[attr][idx] for attr in range(num_attr)]
-            for idx in range(len(total_trues[0]))
+            for idx in range(len(total_trues_reshaped[0]))
         ]
 
     return total_preds_reshaped, total_trues_reshaped
