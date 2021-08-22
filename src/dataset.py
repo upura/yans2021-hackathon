@@ -288,7 +288,7 @@ class ShinraData:
 
     def to_ner_examples(self) -> List[NerExample]:
         outputs: List[NerExample] = []
-        iobs = self.iob
+        iobs = self.to_iob()
         for idx in self.valid_line_ids:
             sent = NerExample(
                 tokens=self.tokens[idx],
@@ -314,8 +314,7 @@ class ShinraData:
             all_words.append(words)
         return all_words
 
-    @property
-    def iob(self) -> List[List[List[str]]]:
+    def to_iob(self) -> List[List[List[str]]]:
         """
         %%% IOB for ** only word-level iob2 tag **
         iobs = [sent, sent, ...]
