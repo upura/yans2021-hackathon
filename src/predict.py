@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from collections import OrderedDict
 from pathlib import Path
 from typing import Tuple, List
 
@@ -159,7 +160,9 @@ def main():
         joblib.dump(shinra_datum, cache_path, compress=3)
 
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
-    model.load_state_dict(torch.load(args.model_path))
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    state_dict = torch.load(args.model_path, map_location=device)
+    model.load_state_dict(OrderedDict({k.replace('module.', ''): v for k, v in state_dict.items()}))
 
     # dataset = [ner_for_shinradata(model, tokenizer, ds) for ds in shinra_dataset]
     with open(args.output_path, "w") as f:
