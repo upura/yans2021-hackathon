@@ -168,7 +168,7 @@ def main():
         for data in shinra_datum:
             processed_data = ner_for_shinradata(model, tokenizer, data)
             if processed_data.nes:
-                f.write("\n".join(ne.to_json() for ne in processed_data.nes) + "\n")
+                f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in processed_data.nes) + "\n")
 
 
 if __name__ == "__main__":
