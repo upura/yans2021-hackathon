@@ -265,10 +265,12 @@ class ShinraData:
                             else word2subword[token_idx - 1]
                         )
                         token_offset.end = OffsetPoint(line_id, end_offset)
-                        token_offset.text = " ".join(
+                        text_offset.end = text_offsets[end_offset - 1].end
+                        text = "".join(
                             tokens[token_offset.start.offset : token_offset.end.offset]
                         )
-                        text_offset.end = text_offsets[end_offset - 1].end
+                        token_offset.text = text
+                        text_offset.text = text
 
                         assert text_offset.start and text_offset.end
                         assert token_offset.start and token_offset.end
