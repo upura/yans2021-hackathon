@@ -21,7 +21,7 @@ def ner_for_shinradata(
     shinra_data: ShinraData
 ) -> ShinraData:
     assert shinra_data.nes is None
-    dataset = NerDataset(shinra_data.to_ner_examples(), tokenizer)
+    dataset = NerDataset.from_shinra(shinra_data, tokenizer)
     total_preds, _ = predict(model, dataset, sent_wise=True)
     shinra_data.add_nes_from_iob(total_preds)
     return shinra_data

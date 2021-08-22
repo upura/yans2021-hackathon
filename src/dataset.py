@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Generator
 
 import torch
 import torch.nn.utils.rnn as rnn
@@ -286,18 +286,6 @@ class ShinraData:
                             word2subword[token_idx - 1]
                         ].start
 
-    def to_ner_examples(self) -> List[NerExample]:
-        outputs: List[NerExample] = []
-        iobs = self.to_iob()
-        for idx in self.valid_line_ids:
-            sent = NerExample(
-                tokens=self.tokens[idx],
-                word_idxs=self.word_alignments[idx],
-                labels=iobs[idx] if self.nes is not None else None,
-            )
-            outputs.append(sent)
-        return outputs
-
     @property
     def words(self) -> List[List[str]]:
         all_words: List[List[str]] = []
@@ -365,6 +353,29 @@ class NerDataset(Dataset):
         assert tokenizer.pad_token_id == self.PAD_FOR_INPUT_IDS
         self.examples: List[NerExample] = examples
 
+    @classmethod
+    def from_shinra(
+        cls,
+        shinra_data: Union[ShinraData, List[ShinraData]],
+        tokenizer: PreTrainedTokenizer
+    ) -> "NerDataset":
+        if isinstance(shinra_data, list):
+            examples = [ex for data in shinra_data for ex in cls._shinra2examples(data)]
+        else:
+            examples = list(cls._shinra2examples(shinra_data))
+        return cls(examples, tokenizer)
+
+    @staticmethod
+    def _shinra2examples(shinra_data: ShinraData) -> Generator[NerExample, None, None]:
+        iobs = shinra_data.to_iob()
+        for idx in shinra_data.valid_line_ids:
+            example = NerExample(
+                tokens=shinra_data.tokens[idx],
+                word_idxs=shinra_data.word_alignments[idx],
+                labels=iobs[idx] if shinra_data.nes is not None else None,
+            )
+            yield example
+
     @staticmethod
     def _convert_example_to_feature(
         example: NerExample, tokenizer: PreTrainedTokenizer
@@ -431,5 +442,5 @@ if __name__ == "__main__":
     shinra_dataset = ShinraData.from_shinra2020_format(
         "/data1/ujiie/shinra/tohoku_bert/Event/Event_Other"
     )
-    dataset = NerDataset(shinra_dataset[0].to_ner_examples(), _tokenizer)
+    dataset = NerDataset.from_shinra(shinra_dataset[0], _tokenizer)
     print(dataset[0])
