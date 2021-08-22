@@ -35,6 +35,7 @@ def predict(
     dataloader = DataLoader(dataset, batch_size=8, collate_fn=ner_collate_fn)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    model = torch.nn.DataParallel(model)
     model.eval()
 
     total_preds: List[List[List[List[int]]]] = []
