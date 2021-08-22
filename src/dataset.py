@@ -56,6 +56,7 @@ class NamedEntity:
     attribute: str
     text_offset: NEDataOffset
     token_offset: NEDataOffset
+    ENE: str
 
     @classmethod
     def from_annotation(cls, annotation: Annotation):
@@ -69,6 +70,7 @@ class NamedEntity:
             token_offset=NEDataOffset(
                 annotation.token_offset.start, annotation.token_offset.end, None
             ),
+            ENE=annotation.ENE,
         )
 
 
@@ -80,6 +82,8 @@ class NerExample:
 
 
 class ShinraData:
+    CATEGORY2ENE = {"City": "1.5.1.1", "Company": "1.4.6.2"}
+
     def __init__(self, attributes: List[str], params: Dict[str, Any]):
         self.attributes: List[str] = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
@@ -87,6 +91,7 @@ class ShinraData:
         self.page_id: str = params["page_id"]
         self.page_title: str = params["page_title"]
         self.category: str = params["category"]
+        self.ene: str = ShinraData.CATEGORY2ENE[self.category]
         self.tokens: List[List[str]] = params["tokens"]
         self.word_alignments: List[List[int]] = params["word_alignments"]
         self.sub2word: List[Dict[int, int]] = params["sub2word"]
@@ -275,6 +280,7 @@ class ShinraData:
                                 attribute=attr,
                                 text_offset=text_offset,
                                 token_offset=token_offset,
+                                ENE=self.ene,
                             )
                         )
 
