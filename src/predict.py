@@ -32,7 +32,9 @@ def predict(
     sent_wise: bool = False
 ) -> Tuple[List[List[List[int]]], List[List[List[int]]]]:
 
-    dataloader = DataLoader(dataset, batch_size=8, collate_fn=ner_collate_fn)
+    batch_size_per_gpu = 16
+    num_gpus = torch.cuda.device_count()
+    dataloader = DataLoader(dataset, batch_size=batch_size_per_gpu * num_gpus, collate_fn=ner_collate_fn)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model = torch.nn.DataParallel(model)
