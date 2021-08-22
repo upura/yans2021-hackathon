@@ -43,7 +43,7 @@ def predict(
     total_preds: List[List[List[List[int]]]] = []
     total_trues: List[List[List[List[int]]]] = []
     with torch.no_grad():
-        for step, batch in tqdm(enumerate(dataloader)):
+        for step, batch in enumerate(dataloader):
             batch = {
                 k: (v.to(device) if isinstance(v, torch.Tensor) else v)
                 for k, v in batch.items()
@@ -168,7 +168,7 @@ def main():
 
     # dataset = [ner_for_shinradata(model, tokenizer, ds) for ds in shinra_dataset]
     with open(args.output_path, "w") as f:
-        for data in shinra_datum:
+        for data in tqdm(shinra_datum):
             processed_data = ner_for_shinradata(model, tokenizer, data)
             if processed_data.nes:
                 f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in processed_data.nes) + "\n")
