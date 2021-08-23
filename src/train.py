@@ -74,7 +74,7 @@ def parse_arg() -> argparse.Namespace:
 
 
 def evaluate(model: nn.Module, dataset: NerDataset, attributes):
-    total_preds, total_trues = predict(model, dataset)
+    total_preds, total_trues = predict(model, dataset, sent_wise=False)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
 
@@ -103,7 +103,7 @@ def train(
     losses = []
     for e in range(args.epoch):
         train_dataloader = DataLoader(
-            train_dataset, batch_size=args.bsz, collate_fn=ner_collate_fn, shuffle=True
+            train_dataset, batch_size=args.bsz, collate_fn=ner_collate_fn, shuffle=True, num_workers=4,
         )
         bar = tqdm(total=len(train_dataset))
 
@@ -174,24 +174,21 @@ def main():
     cache_path = dataset_cache_dir / f"{category}_train_dataset.pkl"
     if cache_path.exists():
         print(f"Loading cached dataset from {cache_path}")
-        dataset = joblib.load(cache_path)
+        shinra_datum = joblib.load(cache_path)
     else:
-        print(f"Cached dataset not found. Building one from {args.input_path}")
-        dataset = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
-        joblib.dump(dataset, cache_path, compress=3)
+        print(f"Cached shinra_datum not found. Building one from {args.input_path}")
+        shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
+        joblib.dump(shinra_datum, cache_path, compress=3)
 
-    model = BertForMultilabelNER(bert, len(dataset[0].attributes))
-    train_dataset, valid_dataset = train_test_split(dataset, test_size=0.1)
-    train_dataset = NerDataset(
-        [d for train_d in train_dataset for d in train_d.to_ner_examples()], tokenizer
-    )
-    valid_dataset = NerDataset(
-        [d for valid_d in valid_dataset for d in valid_d.to_ner_examples()], tokenizer
-    )
+    model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
+
+    train_shinra_datum, valid_shinra_datum = train_test_split(shinra_datum, test_size=0.1)
+    train_dataset = NerDataset.from_shinra(train_shinra_datum, tokenizer)
+    valid_dataset = NerDataset.from_shinra(valid_shinra_datum, tokenizer)
 
     mlflow.start_run()
     mlflow.log_params(vars(args))
-    train(model, train_dataset, valid_dataset, dataset[0].attributes, args)
+    train(model, train_dataset, valid_dataset, shinra_datum[0].attributes, args)
     torch.save(model.state_dict(), args.model_path + "last.model")
     mlflow.end_run()
 

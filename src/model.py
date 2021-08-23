@@ -1,7 +1,8 @@
-from typing import List
+from typing import List, Tuple, Optional
 
 import torch
 import torch.nn as nn
+from transformers import BertModel
 
 
 def create_pooler_matrix(
@@ -34,66 +35,50 @@ def create_pooler_matrix(
 
 
 class BertForMultilabelNER(nn.Module):
-    def __init__(self, bert, attribute_num, dropout=0.1):
+    def __init__(
+        self,
+        bert: BertModel,
+        attribute_num: int,
+        dropout: float = 0.1
+    ):
         super().__init__()
-        self.bert = bert
+        self.bert: BertModel = bert
         self.dropout = nn.Dropout(dropout)
+        self.num_attributes: int = attribute_num
 
         # classifier that classifies token into IOB tag (B, I, O) for each attribute
-        output_layer = [nn.Linear(768, 768) for i in range(attribute_num)]
-        self.output_layer = nn.ModuleList(output_layer)
+        # self.output_layer = nn.Linear(768, 768 * attribute_num)
 
         self.relu = nn.ReLU()
 
         # classifier that classifies token into IOB tag (B, I, O) for each attribute
-        classifiers = [nn.Linear(768, 3) for i in range(attribute_num)]
-        self.classifiers = nn.ModuleList(classifiers)
+        bert_hidden_size = self.bert.config.hidden_size
+        self.classifier = nn.Linear(bert_hidden_size, self.num_attributes * 3)
 
     def forward(
         self,
-        input_ids=None,
-        attention_mask=None,
-        labels=None,
-        pooling_matrix=None,
-    ):
-        outputs = self.bert(input_ids, attention_mask=attention_mask)
-        sequence_output = outputs[0]  # (b, seq, hid)
+        input_ids: torch.Tensor,  # (b, seq)
+        attention_mask: torch.Tensor,  # (b, seq)
+        pooling_matrix: torch.Tensor,  # (b, word, seq)
+        labels=None,  # (b, seq, attr)
+    ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
+        batch_size, word_len, sequence_len = pooling_matrix.size()
+        bert_out = self.bert(input_ids, attention_mask=attention_mask)
         # create word-level representations using pooler matrix
-        sequence_output = torch.bmm(pooling_matrix, sequence_output)  # (b, seq, hid)
-        sequence_output = self.dropout(sequence_output)  # (b, seq, hid)
+        # (b, word, seq), (b, seq, hid) -> (b, word, hid)
+        sequence_output = torch.bmm(pooling_matrix, bert_out.last_hidden_state)
+        sequence_output = self.dropout(sequence_output)  # (b, word, hid)
 
         # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
-        # logits = [classifier(hiddens) for classifier, hiddens in zip(self.classifiers, hiddens)]
-        logits = [
-            classifier(sequence_output) for classifier in self.classifiers
-        ]  # (attr, b, seq, 3)
+        # (b, word, hid) -> (b, word, attr*3) -> (b, word, attr, 3)
+        logits = self.classifier(sequence_output).view(batch_size, word_len, self.num_attributes, 3)
 
         loss = None
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
             loss = 0
-            labels = labels.permute(2, 0, 1).contiguous()  # (attr, b, seq)
-            for label, logit in zip(labels, logits):
-                loss += loss_fn(logit[:, :-1, :].reshape(-1, 3), label.view(-1)) / len(labels)
+            for attr_idx in range(self.num_attributes):
+                loss += loss_fn(logits[:, :-1, attr_idx, :].reshape(-1, 3), labels[:, :, attr_idx].view(-1))
+            loss /= self.num_attributes
 
-        output = (logits,) + outputs[2:]
-        return loss, output
-
-    @staticmethod
-    def viterbi(logits, penalty=float("inf")):
-        num_tags = 3
-
-        # 0: O, 1: B, 2: I
-        penalties = torch.zeros((num_tags, num_tags))
-        penalties[0][2] = penalty
-
-        all_preds = []
-        for logit in logits:
-            pred_tags = [0]
-            for l in logit:
-                transit_penalty = penalties[pred_tags[-1]]
-                l = l - transit_penalty
-                tag = torch.argmax(l, dim=-1)
-                pred_tags.append(tag.item())
-            all_preds.append(pred_tags[1:])
-        return all_preds
+        return loss, logits

@@ -1,3 +1,5 @@
+from typing import Iterable, List
+
 import torch
 from transformers import get_linear_schedule_with_warmup
 
@@ -62,21 +64,19 @@ def get_scheduler(
     return scheduler
 
 
-def decode_iob(preds, attributes):
-    iobs = []
+def decode_iob(preds: List[List[Iterable[int]]], attributes: List[str]) -> List[List[str]]:
+    iobs: List[List[str]] = []
     idx2iob = ["O", "B", "I"]
-    for attr_idx in range(len(attributes)):
-        attr_iobs = preds[attr_idx]
-        attr_iobs = [
+    assert len(preds) == len(attributes)
+    for attr_iobs, attribute in zip(preds, attributes):
+        iobs += [
             [
-                idx2iob[idx] + "-" + attributes[attr_idx]
+                idx2iob[idx] + "-" + attribute
                 if idx2iob[idx] != "O"
                 else "O"
                 for idx in iob
             ]
             for iob in attr_iobs
         ]
-
-        iobs.extend(attr_iobs)
 
     return iobs

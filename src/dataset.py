@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Generator
 
 import torch
 import torch.nn.utils.rnn as rnn
@@ -40,6 +40,7 @@ class Annotation:
     ENE: str
 
 
+@dataclass_json
 @dataclass
 class NEDataOffset:
     start: Optional[OffsetPoint]
@@ -47,18 +48,20 @@ class NEDataOffset:
     text: Optional[str]
 
 
+@dataclass_json
 @dataclass(frozen=True)
 class NamedEntity:
-    page_id: str
+    page_id: int  # int 型じゃないと submit に失敗する
     title: str
     attribute: str
     text_offset: NEDataOffset
     token_offset: NEDataOffset
+    ENE: str
 
     @classmethod
     def from_annotation(cls, annotation: Annotation):
         return cls(
-            annotation.page_id,
+            int(annotation.page_id),
             annotation.title,
             annotation.attribute,
             text_offset=NEDataOffset(
@@ -67,6 +70,7 @@ class NamedEntity:
             token_offset=NEDataOffset(
                 annotation.token_offset.start, annotation.token_offset.end, None
             ),
+            ENE=annotation.ENE,
         )
 
 
@@ -78,6 +82,8 @@ class NerExample:
 
 
 class ShinraData:
+    CATEGORY2ENE = {"City": "1.5.1.1", "Company": "1.4.6.2"}
+
     def __init__(self, attributes: List[str], params: Dict[str, Any]):
         self.attributes: List[str] = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
@@ -85,6 +91,7 @@ class ShinraData:
         self.page_id: str = params["page_id"]
         self.page_title: str = params["page_title"]
         self.category: str = params["category"]
+        self.ene: str = ShinraData.CATEGORY2ENE[self.category]
         self.tokens: List[List[str]] = params["tokens"]
         self.word_alignments: List[List[int]] = params["word_alignments"]
         self.sub2word: List[Dict[int, int]] = params["sub2word"]
@@ -258,21 +265,24 @@ class ShinraData:
                             else word2subword[token_idx - 1]
                         )
                         token_offset.end = OffsetPoint(line_id, end_offset)
-                        token_offset.text = " ".join(
+                        text_offset.end = text_offsets[end_offset - 1].end
+                        text = "".join(
                             tokens[token_offset.start.offset : token_offset.end.offset]
                         )
-                        text_offset.end = text_offsets[end_offset - 1].end
+                        token_offset.text = text
+                        text_offset.text = text
 
                         assert text_offset.start and text_offset.end
                         assert token_offset.start and token_offset.end
 
                         self.nes.append(
                             NamedEntity(
-                                page_id=self.page_id,
+                                page_id=int(self.page_id),
                                 title=self.page_title,
                                 attribute=attr,
                                 text_offset=text_offset,
                                 token_offset=token_offset,
+                                ENE=self.ene,
                             )
                         )
 
@@ -285,18 +295,6 @@ class ShinraData:
                         text_offset.start = text_offsets[
                             word2subword[token_idx - 1]
                         ].start
-
-    def to_ner_examples(self) -> List[NerExample]:
-        outputs: List[NerExample] = []
-        iobs = self.iob
-        for idx in self.valid_line_ids:
-            sent = NerExample(
-                tokens=self.tokens[idx],
-                word_idxs=self.word_alignments[idx],
-                labels=iobs[idx] if self.nes is not None else None,
-            )
-            outputs.append(sent)
-        return outputs
 
     @property
     def words(self) -> List[List[str]]:
@@ -314,8 +312,7 @@ class ShinraData:
             all_words.append(words)
         return all_words
 
-    @property
-    def iob(self) -> List[List[List[str]]]:
+    def to_iob(self) -> List[List[List[str]]]:
         """
         %%% IOB for ** only word-level iob2 tag **
         iobs = [sent, sent, ...]
@@ -365,6 +362,29 @@ class NerDataset(Dataset):
         self.tokenizer: PreTrainedTokenizer = tokenizer
         assert tokenizer.pad_token_id == self.PAD_FOR_INPUT_IDS
         self.examples: List[NerExample] = examples
+
+    @classmethod
+    def from_shinra(
+        cls,
+        shinra_data: Union[ShinraData, List[ShinraData]],
+        tokenizer: PreTrainedTokenizer
+    ) -> "NerDataset":
+        if isinstance(shinra_data, list):
+            examples = [ex for data in shinra_data for ex in cls._shinra2examples(data)]
+        else:
+            examples = list(cls._shinra2examples(shinra_data))
+        return cls(examples, tokenizer)
+
+    @staticmethod
+    def _shinra2examples(shinra_data: ShinraData) -> Generator[NerExample, None, None]:
+        iobs = shinra_data.to_iob() if shinra_data.nes is not None else None
+        for idx in shinra_data.valid_line_ids:
+            example = NerExample(
+                tokens=shinra_data.tokens[idx],
+                word_idxs=shinra_data.word_alignments[idx],
+                labels=iobs[idx] if shinra_data.nes is not None else None,
+            )
+            yield example
 
     @staticmethod
     def _convert_example_to_feature(
@@ -432,5 +452,5 @@ if __name__ == "__main__":
     shinra_dataset = ShinraData.from_shinra2020_format(
         "/data1/ujiie/shinra/tohoku_bert/Event/Event_Other"
     )
-    dataset = NerDataset(shinra_dataset[0].to_ner_examples(), _tokenizer)
+    dataset = NerDataset.from_shinra(shinra_dataset[0], _tokenizer)
     print(dataset[0])
