@@ -34,7 +34,7 @@ def convert_shinra2019_to_yans2021(category: str):
                                 "attribute": attribute,
                                 "text_offset": text_offset,
                                 "html_offset": html_offset,
-                                "ENE": "1.5.1.1",
+                                "ENE": "1.5.1.1" if category == "City" else "1.4.6.2",
                             }
                         )
         pd.DataFrame(res).to_json(
