@@ -1,6 +1,8 @@
 import argparse
 import os
 from pathlib import Path
+from typing import List
+from datetime import datetime
 
 import joblib
 import mlflow
@@ -49,7 +51,10 @@ def parse_arg() -> argparse.Namespace:
         "--input_path", type=str, help="Specify input path in SHINRA2020"
     )
     parser.add_argument(
-        "--model_path", type=str, help="Specify attribute_list path in SHINRA2020"
+        "--save_path", type=str, help="Specify path to directory where trained checkpoints are saved"
+    )
+    parser.add_argument(
+        "--additional_name", "-a", type=str, help="Specify any string to identify experiment condition"
     )
     parser.add_argument(
         "--lr", type=float, help="Specify attribute_list path in SHINRA2020"
@@ -73,7 +78,7 @@ def parse_arg() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def evaluate(model: nn.Module, dataset: NerDataset, attributes):
+def evaluate(model: nn.Module, dataset: NerDataset, attributes: List[str]):
     total_preds, total_trues = predict(model, dataset, sent_wise=False)
     total_preds = decode_iob(total_preds, attributes)
     total_trues = decode_iob(total_trues, attributes)
@@ -86,8 +91,9 @@ def train(
     model: nn.Module,
     train_dataset: NerDataset,
     valid_dataset: NerDataset,
-    attributes,
-    args,
+    attributes: List[str],
+    save_dir: Path,
+    args: argparse.Namespace,
 ):
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     # scheduler = get_scheduler(
@@ -155,7 +161,7 @@ def train(
         mlflow.log_metric("Valid F1", valid_f1, step=e)
 
         if early_stopping._score < valid_f1:
-            torch.save(model.state_dict(), args.model_path + "best.model")
+            torch.save(model.state_dict(), save_dir / "best.model")
 
         if e + 1 > 30 and early_stopping.validate(valid_f1):
             break
@@ -186,10 +192,16 @@ def main():
     train_dataset = NerDataset.from_shinra(train_shinra_datum, tokenizer)
     valid_dataset = NerDataset.from_shinra(valid_shinra_datum, tokenizer)
 
+    save_dir = Path(args.save_path).joinpath(
+        f"{category}{datetime.now().strftime(r'%m%d_%H%M')}" +
+        f"_{args.additional_name}" if args.additional_name else ""
+    )
+    save_dir.mkdir(parents=True)
+
     mlflow.start_run()
     mlflow.log_params(vars(args))
-    train(model, train_dataset, valid_dataset, shinra_datum[0].attributes, args)
-    torch.save(model.state_dict(), args.model_path + "last.model")
+    train(model, train_dataset, valid_dataset, shinra_datum[0].attributes, save_dir, args)
+    torch.save(model.state_dict(), save_dir / "last.model")
     mlflow.end_run()
 
 
