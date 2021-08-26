@@ -130,10 +130,7 @@ def parse_arg() -> argparse.Namespace:
         "--input_path", type=str, help="Specify input path in SHINRA2020"
     )
     parser.add_argument(
-        "--model_path", type=str, help="Specify attribute_list path in SHINRA2020"
-    )
-    parser.add_argument(
-        "--output_path", type=str, help="Specify attribute_list path in SHINRA2020"
+        "--model_path", type=str, help="Specify path to trained checkpoint"
     )
     parser.add_argument(
         "--mode", type=str, choices=["leaderboard", "all"], default="all",
@@ -149,9 +146,8 @@ def main():
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
-    category = str(args.input_path).split("/")[-1]
-
     # dataset = [ShinraData(), ....]
+    category = Path(args.input_path).parts[-1]
     dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
     dataset_cache_dir.mkdir(exist_ok=True)
     cache_path = dataset_cache_dir / f"{category}_{args.mode}_dataset.pkl"
@@ -166,12 +162,12 @@ def main():
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     state_dict = torch.load(args.model_path, map_location=device)
-    model.load_state_dict(OrderedDict({k.replace('module.', ''): v for k, v in state_dict.items()}))
+    model.load_state_dict(OrderedDict({k.replace("module.", ""): v for k, v in state_dict.items()}))
     model.to(device)
     model = torch.nn.DataParallel(model)
 
-    # dataset = [ner_for_shinradata(model, tokenizer, ds) for ds in shinra_dataset]
-    with open(args.output_path, "w") as f:
+    save_dir = Path(args.model_path).parent
+    with save_dir.joinpath(f"{args.mode}.json").open(mode="wt") as f:
         for data in tqdm(shinra_datum):
             processed_data = ner_for_shinradata(model, tokenizer, data)
             if processed_data.nes:
