@@ -69,10 +69,9 @@ def predict(
             preds: List[List[List[int]]] = []  # (attr, b, seq)
             # attribute loop
             for attr_idx in range(logits.size(2)):
-                attr_labels: List[List[int]] = viterbi(logits[:, :, attr_idx, :].detach().cpu())  # (b, seq)
                 preds.append([
-                    label[: len(word_idx) - 1]
-                    for label, word_idx in zip(attr_labels, word_idxs)
+                    viterbi(logit)[: len(word_idx) - 1]
+                    for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), word_idxs)
                 ])
 
             total_preds.append(preds)
@@ -105,23 +104,23 @@ def predict(
     return total_preds_reshaped, total_trues_reshaped
 
 
-def viterbi(logits, penalty=float("inf")) -> List[List[int]]:
+def viterbi(
+    logits: torch.Tensor,  # (seq, 3)
+    penalty=float("inf")
+) -> List[int]:
     num_tags = 3
 
     # 0: O, 1: B, 2: I
-    penalties = torch.zeros((num_tags, num_tags))
+    penalties = torch.zeros((num_tags, num_tags))  # (tag, tag)
     penalties[0][2] = penalty
+    # penalties[1][1] = penalty  # B -> B も同一属性内ではありえないはず
 
-    all_preds: List[List[int]] = []
+    pred_tags: List[int] = [0]
     for logit in logits:
-        pred_tags: List[int] = [0]
-        for l in logit:
-            transit_penalty = penalties[pred_tags[-1]]
-            l = l - transit_penalty
-            tag = torch.argmax(l, dim=-1)
-            pred_tags.append(tag.item())
-        all_preds.append(pred_tags[1:])
-    return all_preds
+        transit_penalty = penalties[pred_tags[-1]]  # (tag)
+        tag = (logit - transit_penalty).argmax(dim=-1)  # ()
+        pred_tags.append(tag.item())
+    return pred_tags[1:]
 
 
 def parse_arg() -> argparse.Namespace:
