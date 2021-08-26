@@ -16,7 +16,8 @@ BERTの上に属性ごとに独立した分類層を乗せています．
 ```bash
 python train.py \
     --input_path /path/to/Target_Category \
-    --model_path /path/to/model_directory \
+    --save_path /path/to/save_directory \
+    --additional_name "" \
     --lr 1e-5 \
     --bsz 32 \
     --epoch 50 \
@@ -34,5 +35,5 @@ python train.py \
 python predict.py \
     --input_path /path/to/Target_Category \
     --model_path /path/to/model_file \
-    --output_path /path/to/output_file
+    --mode all
 ```

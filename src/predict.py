@@ -36,7 +36,7 @@ def predict(
     num_gpus = torch.cuda.device_count()
     dataloader = DataLoader(
         dataset,
-        batch_size=batch_size_per_gpu * num_gpus,
+        batch_size=batch_size_per_gpu * max(1, num_gpus),
         collate_fn=ner_collate_fn,
         num_workers=4,
     )
@@ -69,10 +69,9 @@ def predict(
             preds: List[List[List[int]]] = []  # (attr, b, seq)
             # attribute loop
             for attr_idx in range(logits.size(2)):
-                attr_labels: List[List[int]] = viterbi(logits[:, :, attr_idx, :].detach().cpu())  # (b, seq)
                 preds.append([
-                    label[: len(word_idx) - 1]
-                    for label, word_idx in zip(attr_labels, word_idxs)
+                    viterbi(logit)[: len(word_idx) - 1]
+                    for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), word_idxs)
                 ])
 
             total_preds.append(preds)
@@ -105,23 +104,23 @@ def predict(
     return total_preds_reshaped, total_trues_reshaped
 
 
-def viterbi(logits, penalty=float("inf")) -> List[List[int]]:
+def viterbi(
+    logits: torch.Tensor,  # (seq, 3)
+    penalty=float("inf")
+) -> List[int]:
     num_tags = 3
 
     # 0: O, 1: B, 2: I
-    penalties = torch.zeros((num_tags, num_tags))
+    penalties = torch.zeros((num_tags, num_tags))  # (tag, tag)
     penalties[0][2] = penalty
+    # penalties[1][1] = penalty  # B -> B も同一属性内ではありえないはず
 
-    all_preds: List[List[int]] = []
+    pred_tags: List[int] = [0]
     for logit in logits:
-        pred_tags: List[int] = [0]
-        for l in logit:
-            transit_penalty = penalties[pred_tags[-1]]
-            l = l - transit_penalty
-            tag = torch.argmax(l, dim=-1)
-            pred_tags.append(tag.item())
-        all_preds.append(pred_tags[1:])
-    return all_preds
+        transit_penalty = penalties[pred_tags[-1]]  # (tag)
+        tag = (logit - transit_penalty).argmax(dim=-1)  # ()
+        pred_tags.append(tag.item())
+    return pred_tags[1:]
 
 
 def parse_arg() -> argparse.Namespace:
@@ -131,10 +130,7 @@ def parse_arg() -> argparse.Namespace:
         "--input_path", type=str, help="Specify input path in SHINRA2020"
     )
     parser.add_argument(
-        "--model_path", type=str, help="Specify attribute_list path in SHINRA2020"
-    )
-    parser.add_argument(
-        "--output_path", type=str, help="Specify attribute_list path in SHINRA2020"
+        "--model_path", type=str, help="Specify path to trained checkpoint"
     )
     parser.add_argument(
         "--mode", type=str, choices=["leaderboard", "all"], default="all",
@@ -150,9 +146,8 @@ def main():
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
-    category = str(args.input_path).split("/")[-1]
-
     # dataset = [ShinraData(), ....]
+    category = Path(args.input_path).parts[-1]
     dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
     dataset_cache_dir.mkdir(exist_ok=True)
     cache_path = dataset_cache_dir / f"{category}_{args.mode}_dataset.pkl"
@@ -167,12 +162,12 @@ def main():
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     state_dict = torch.load(args.model_path, map_location=device)
-    model.load_state_dict(OrderedDict({k.replace('module.', ''): v for k, v in state_dict.items()}))
+    model.load_state_dict(OrderedDict({k.replace("module.", ""): v for k, v in state_dict.items()}))
     model.to(device)
     model = torch.nn.DataParallel(model)
 
-    # dataset = [ner_for_shinradata(model, tokenizer, ds) for ds in shinra_dataset]
-    with open(args.output_path, "w") as f:
+    save_dir = Path(args.model_path).parent
+    with save_dir.joinpath(f"{args.mode}.json").open(mode="wt") as f:
         for data in tqdm(shinra_datum):
             processed_data = ner_for_shinradata(model, tokenizer, data)
             if processed_data.nes:
