@@ -36,7 +36,7 @@ def predict(
     num_gpus = torch.cuda.device_count()
     dataloader = DataLoader(
         dataset,
-        batch_size=batch_size_per_gpu * num_gpus,
+        batch_size=batch_size_per_gpu * max(1, num_gpus),
         collate_fn=ner_collate_fn,
         num_workers=4,
     )
