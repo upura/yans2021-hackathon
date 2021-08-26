@@ -194,7 +194,7 @@ def main():
 
     save_dir = Path(args.save_path).joinpath(
         f"{category}{datetime.now().strftime(r'%m%d_%H%M')}" +
-        f"_{args.additional_name}" if args.additional_name else ""
+        (f"_{args.additional_name}" if args.additional_name else "")
     )
     save_dir.mkdir(parents=True)
 
