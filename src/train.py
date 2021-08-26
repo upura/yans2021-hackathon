@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
-from dataset import NerDataset, ShinraData, ner_collate_fn
+from dataset.shinra import ShinraData
+from dataset.ner import NerDataset, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
 from util import decode_iob
