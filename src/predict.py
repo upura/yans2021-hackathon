@@ -13,7 +13,7 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer
 
 from dataset.shinra import ShinraData
 from dataset.ner import NerDataset, ner_collate_fn
-from model import BertForMultilabelNER
+from model import BertForMultilabelNER, create_pooler_matrix
 
 
 def ner_for_shinradata(
@@ -53,7 +53,11 @@ def predict(
                 for k, v in batch.items()
             }
 
-            _, logits = model(**batch)  # _, (b, word, attr, 3)
+            pooling_matrix = create_pooler_matrix(
+                batch["input_ids"], batch["word_idxs"], pool_type="head"
+            ).to(device)  # (b, word, seq)
+
+            _, logits = model(**batch, pooling_matrix=pooling_matrix)  # _, (b, word, attr, 3)
 
             preds: List[List[List[int]]] = []  # (attr, b, word)
             # attribute loop

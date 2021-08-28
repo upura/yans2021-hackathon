@@ -18,7 +18,7 @@ from transformers import AutoModel, AutoTokenizer
 from dataset.shinra import ShinraData
 from dataset.ner import NerDataset, ner_collate_fn
 from dataset.pseudo import PseudoDataset
-from model import BertForMultilabelNER
+from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
 from util import decode_iob
 
@@ -126,7 +126,11 @@ def train(
                 for k, v in batch.items()
             }
 
-            loss, output = model(**batch)  # ,(b, word, attr, 3)
+            pooling_matrix = create_pooler_matrix(
+                batch["input_ids"], batch["word_idxs"], pool_type="head"
+            ).to(device)  # (b, word, seq)
+
+            loss, output = model(**batch, pooling_matrix=pooling_matrix)  # ,(b, word, attr, 3)
 
             if len(loss.size()) > 0:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training

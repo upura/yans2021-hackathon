@@ -61,14 +61,11 @@ class BertForMultilabelNER(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,  # (b, seq)
-        word_idxs: torch.Tensor,  # (b, word)
         labels,  # (b, word, attr) or None
         confidences,  # (b, word, attr) or None
+        pooling_matrix,  # (b, word, seq)
         **_,
     ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
-        pooling_matrix = create_pooler_matrix(
-            input_ids, word_idxs, pool_type="head"
-        ).to(input_ids.device)  # (b, word, seq)
         batch_size, word_len, sequence_len = pooling_matrix.size()
 
         bert_out = self.bert(input_ids, attention_mask=(input_ids > 0))
