@@ -2,7 +2,7 @@ import argparse
 import os
 from collections import OrderedDict
 from pathlib import Path
-from typing import Tuple, List
+from typing import List, Tuple
 
 import joblib
 import torch
@@ -11,14 +11,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer
 
-from dataset import ShinraData, NerDataset, ner_collate_fn
+from dataset import NerDataset, ShinraData, ner_collate_fn
 from model import BertForMultilabelNER, create_pooler_matrix
 
 
 def ner_for_shinradata(
-    model: nn.Module,
-    tokenizer: PreTrainedTokenizer,
-    shinra_data: ShinraData
+    model: nn.Module, tokenizer: PreTrainedTokenizer, shinra_data: ShinraData
 ) -> ShinraData:
     assert shinra_data.nes is None
     dataset = NerDataset.from_shinra(shinra_data, tokenizer)
@@ -28,9 +26,7 @@ def ner_for_shinradata(
 
 
 def predict(
-    model: nn.Module,
-    dataset: NerDataset,
-    sent_wise: bool = False
+    model: nn.Module, dataset: NerDataset, sent_wise: bool = False
 ) -> Tuple[List[List[List[int]]], List[List[List[int]]]]:
     batch_size_per_gpu = 16
     num_gpus = torch.cuda.device_count()
@@ -69,14 +65,20 @@ def predict(
             preds: List[List[List[int]]] = []  # (attr, b, seq)
             # attribute loop
             for attr_idx in range(logits.size(2)):
-                preds.append([
-                    viterbi(logit)[: len(word_idx) - 1]
-                    for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), word_idxs)
-                ])
+                preds.append(
+                    [
+                        viterbi(logit)[: len(word_idx) - 1]
+                        for logit, word_idx in zip(
+                            logits[:, :, attr_idx, :].detach().cpu(), word_idxs
+                        )
+                    ]
+                )
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
-            total_trues.append(labels.permute(2, 0, 1).tolist() if labels is not None else preds)
+            total_trues.append(
+                labels.permute(2, 0, 1).tolist() if labels is not None else preds
+            )
 
     num_attr: int = len(total_preds[0])
     total_preds_reshaped = [
@@ -86,7 +88,8 @@ def predict(
     total_trues_reshaped = [
         [
             [t for t in true if t != NerDataset.PAD_FOR_LABELS]
-            for trues in total_trues for true in trues[attr]
+            for trues in total_trues
+            for true in trues[attr]
         ]
         for attr in range(num_attr)
     ]  # (attr, N, seq)
@@ -104,10 +107,7 @@ def predict(
     return total_preds_reshaped, total_trues_reshaped
 
 
-def viterbi(
-    logits: torch.Tensor,  # (seq, 3)
-    penalty=float("inf")
-) -> List[int]:
+def viterbi(logits: torch.Tensor, penalty=float("inf")) -> List[int]:  # (seq, 3)
     num_tags = 3
 
     # 0: O, 1: B, 2: I
@@ -133,8 +133,11 @@ def parse_arg() -> argparse.Namespace:
         "--model_path", type=str, help="Specify path to trained checkpoint"
     )
     parser.add_argument(
-        "--mode", type=str, choices=["leaderboard", "all"], default="all",
-        help="Specify 'leaderboard' to evaluate leaderboard data and specify 'all' to evaluate all data"
+        "--mode",
+        type=str,
+        choices=["leaderboard", "all"],
+        default="all",
+        help="Specify 'leaderboard' to evaluate leaderboard data and specify 'all' to evaluate all data",
     )
 
     return parser.parse_args()
@@ -156,13 +159,17 @@ def main():
         shinra_datum = joblib.load(cache_path)
     else:
         print(f"Cached dataset not found. Building one from {args.input_path}")
-        shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode=args.mode)
+        shinra_datum = ShinraData.from_shinra2020_format(
+            Path(args.input_path), mode=args.mode
+        )
         joblib.dump(shinra_datum, cache_path, compress=3)
 
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     state_dict = torch.load(args.model_path, map_location=device)
-    model.load_state_dict(OrderedDict({k.replace("module.", ""): v for k, v in state_dict.items()}))
+    model.load_state_dict(
+        OrderedDict({k.replace("module.", ""): v for k, v in state_dict.items()})
+    )
     model.to(device)
     model = torch.nn.DataParallel(model)
 
@@ -171,7 +178,12 @@ def main():
         for data in tqdm(shinra_datum):
             processed_data = ner_for_shinradata(model, tokenizer, data)
             if processed_data.nes:
-                f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in processed_data.nes) + "\n")
+                f.write(
+                    "\n".join(
+                        ne.to_json(ensure_ascii=False) for ne in processed_data.nes
+                    )
+                    + "\n"
+                )
 
 
 if __name__ == "__main__":
