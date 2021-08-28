@@ -183,7 +183,7 @@ def main():
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
-    input_path = Path(args.inputpath)
+    input_path = Path(args.input_path)
     category = input_path.parts[-1]
     shinra_datum = load_shinra_datum(input_path, category, mode="train")
 
