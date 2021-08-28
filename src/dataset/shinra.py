@@ -96,7 +96,7 @@ class ShinraData:
     def from_shinra2020_format(
         cls,
         input_path: Union[Path, str],
-        mode: str = "all",  # "train", "leaderboard", or "all"
+        mode: str = "all",  # "train", "leaderboard", "pseudo", or "all"
     ) -> List["ShinraData"]:
         input_path = Path(input_path)
         category = input_path.stem

@@ -11,12 +11,13 @@ import torch.nn as nn
 import torch.optim as optim
 from seqeval.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
 from dataset.shinra import ShinraData
 from dataset.ner import NerDataset, ner_collate_fn
+from dataset.pseudo import PseudoDataset
 from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
 from util import decode_iob
@@ -50,6 +51,9 @@ def parse_arg() -> argparse.Namespace:
 
     parser.add_argument(
         "--input_path", type=str, help="Specify input path in SHINRA2020"
+    )
+    parser.add_argument(
+        "--pseudo_input_path", "-p", type=str, help="Specify input path in SHINRA2019"
     )
     parser.add_argument(
         "--save_path", type=str, help="Specify path to directory where trained checkpoints are saved"
@@ -192,6 +196,11 @@ def main():
     train_shinra_datum, valid_shinra_datum = train_test_split(shinra_datum, test_size=0.1)
     train_dataset = NerDataset.from_shinra(train_shinra_datum, tokenizer)
     valid_dataset = NerDataset.from_shinra(valid_shinra_datum, tokenizer)
+
+    if args.pseudo_input_path:
+        pseudo_shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode="pseudo")
+        pseudo_train_dataset = PseudoDataset.from_shinra(pseudo_shinra_datum, args.pseudo_input_path, tokenizer)
+        train_dataset = ConcatDataset((train_dataset, pseudo_train_dataset))
 
     save_dir = Path(args.save_path).joinpath(
         f"{category}{datetime.now().strftime(r'%m%d_%H%M')}" +
