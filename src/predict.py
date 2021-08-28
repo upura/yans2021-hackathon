@@ -13,7 +13,7 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer
 
 from dataset.shinra import ShinraData
 from dataset.ner import NerDataset, ner_collate_fn
-from model import BertForMultilabelNER, create_pooler_matrix
+from model import BertForMultilabelNER
 
 
 def ner_for_shinradata(
@@ -52,29 +52,20 @@ def predict(
                 k: (v.to(device) if isinstance(v, torch.Tensor) else v)
                 for k, v in batch.items()
             }
-            input_ids = batch["input_ids"]  # (b, seq)
-            word_idxs = batch["word_idxs"]  # (b, word)
-            labels = batch["labels"]  # (b, word, attr) or None
 
-            pooling_matrix = create_pooler_matrix(
-                input_ids, word_idxs, pool_type="head"
-            ).to(device)
+            _, logits = model(**batch)  # _, (b, word, attr, 3)
 
-            # (b, word, attr, 3)
-            _, logits = model(
-                **batch,
-                pooling_matrix=pooling_matrix,
-            )
             preds: List[List[List[int]]] = []  # (attr, b, word)
             # attribute loop
             for attr_idx in range(logits.size(2)):
                 preds.append([
                     viterbi(logit)[: len(word_idx) - 1]
-                    for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), word_idxs)
+                    for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), batch["word_idxs"])
                 ])
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
+            labels = batch["labels"]  # (b, word, attr) or None
             total_trues.append(labels.permute(2, 0, 1).tolist() if labels is not None else preds)
 
     num_attr: int = len(total_preds[0])

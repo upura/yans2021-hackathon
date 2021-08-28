@@ -18,7 +18,7 @@ from transformers import AutoModel, AutoTokenizer
 from dataset.shinra import ShinraData
 from dataset.ner import NerDataset, ner_collate_fn
 from dataset.pseudo import PseudoDataset
-from model import BertForMultilabelNER, create_pooler_matrix
+from model import BertForMultilabelNER
 from predict import predict
 from util import decode_iob
 
@@ -125,25 +125,15 @@ def train(
                 k: (v.to(device) if isinstance(v, torch.Tensor) else v)
                 for k, v in batch.items()
             }
-            input_ids = batch["input_ids"]  # (b, seq)
-            word_idxs = batch["word_idxs"]  # (b, word)
-            labels = batch["labels"]  # (b, word, attr)
 
-            pooling_matrix = create_pooler_matrix(
-                input_ids, word_idxs, pool_type="head"
-            ).to(device)
-
-            loss, output = model(
-                **batch,
-                pooling_matrix=pooling_matrix,
-            )
+            loss, output = model(**batch)  # ,(b, word, attr, 3)
 
             if len(loss.size()) > 0:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
             loss.backward()
 
-            total_loss += loss.item() * input_ids.size(0)
+            total_loss += loss.item() * batch["input_ids"].size(0)
             mlflow.log_metric("Train batch loss", loss.item(), step=(e + 1) * step)
 
             bar.set_description(f"[Epoch] {e + 1}")
