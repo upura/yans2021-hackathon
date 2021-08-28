@@ -1,12 +1,13 @@
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Generator, Tuple
+from typing import Any, Dict, List, Union, Generator, Tuple
 
+from dataclasses_json import dataclass_json
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
-from dataclasses_json import dataclass_json
 
+from .ner import InputFeature
 from .shinra import ShinraData, DataOffset
 
 
@@ -71,13 +72,6 @@ class PseudoExample:
     confidence: List[List[float]]
 
 
-@dataclass(frozen=True)
-class InputFeature:
-    input_ids: List[int]
-    word_idxs: List[int]
-    labels: Optional[List[List[int]]]
-
-
 class PseudoDataset(Dataset):
     LABEL2ID = {"O": 0, "B": 1, "I": 2}
     MAX_SEQ_LENGTH = 512
@@ -131,18 +125,22 @@ class PseudoDataset(Dataset):
             idx + 1 for idx in example.word_idxs if idx <= PseudoDataset.MAX_SEQ_LENGTH - 2
         ]
 
-        labels = example.labels
-        if labels is not None:
-            # truncate label using zip(_, word_idxs[:-1]), word_idxs[-1] is not valid idx (for end offset)
-            labels = [
-                [PseudoDataset.LABEL2ID[lbl] for lbl, _ in zip(label, word_idxs[:-1])]
-                for label in labels
-            ]
+        # truncate label using zip(_, word_idxs[:-1]), word_idxs[-1] is not valid idx (for end offset)
+        labels = [
+            [PseudoDataset.LABEL2ID[lbl] for lbl, _ in zip(label, word_idxs[:-1])]
+            for label in example.labels
+        ]
+
+        confs = [
+            [c for c, _ in zip(conf, word_idxs[:-1])]
+            for conf in example.confidence
+        ]
 
         feature = InputFeature(
             input_ids=input_ids,  # (seq)
             word_idxs=word_idxs,  # (word)
-            labels=labels,  # (attr, seq)
+            labels=labels,  # (attr, word)
+            confidences=confs,  # (attr, word)
         )
 
         return feature

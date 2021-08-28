@@ -2,6 +2,7 @@ from typing import List, Tuple, Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from transformers import BertModel
 
 
@@ -60,6 +61,7 @@ class BertForMultilabelNER(nn.Module):
         input_ids: torch.Tensor,  # (b, seq)
         word_idxs: torch.Tensor,  # (b, word)
         labels,  # (b, word, attr) or None
+        confidences,  # (b, word, attr) or None
         **_,
     ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
         pooling_matrix = create_pooler_matrix(
@@ -79,10 +81,9 @@ class BertForMultilabelNER(nn.Module):
 
         loss = None
         if labels is not None:
-            loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
-            loss = 0
-            for attr_idx in range(self.num_attributes):
-                loss += loss_fn(logits[:, :-1, attr_idx, :].reshape(-1, 3), labels[:, :, attr_idx].view(-1))
-            loss /= self.num_attributes
+            loss = F.cross_entropy(logits[:, :-1].transpose(1, 3), labels, weight=confidences, reduction="mean")
+            # for attr_idx in range(self.num_attributes):
+            #     loss += loss_fn(logits[:, :-1, attr_idx, :].reshape(-1, 3), labels[:, :, attr_idx].view(-1))
+            # loss /= self.num_attributes
 
         return loss, logits

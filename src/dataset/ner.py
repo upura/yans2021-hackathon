@@ -21,6 +21,7 @@ class InputFeature:
     input_ids: List[int]
     word_idxs: List[int]
     labels: Optional[List[List[int]]]
+    confidences: List[List[float]]
 
 
 class NerDataset(Dataset):
@@ -69,18 +70,23 @@ class NerDataset(Dataset):
             idx + 1 for idx in example.word_idxs if idx <= NerDataset.MAX_SEQ_LENGTH - 2
         ]
 
-        labels = example.labels
-        if labels is not None:
+        labels = confs = None
+        if example.labels is not None:
             # truncate label using zip(_, word_idxs[:-1]), word_idxs[-1] is not valid idx (for end offset)
             labels = [
                 [NerDataset.LABEL2ID[lbl] for lbl, _ in zip(label, word_idxs[:-1])]
-                for label in labels
+                for label in example.labels
+            ]
+            confs = [
+                [1. for _ in zip(label, word_idxs[:-1])]
+                for label in example.labels
             ]
 
         feature = InputFeature(
             input_ids=input_ids,  # (seq)
             word_idxs=word_idxs,  # (word)
             labels=labels,  # (attr, word)
+            confidences=confs,  # (attr, word)
         )
 
         return feature
@@ -106,7 +112,7 @@ def ner_collate_fn(features: List[Dict[str, Any]]) -> Dict[str, Any]:
             batch[field] = feats
         elif field == "word_idxs":
             batch[field] = [f[field] for f in features]
-        elif field == "labels":
+        elif field in ("labels", "confidences"):
             batch[field] = None
             if first[field] is not None:
                 feats = rnn.pad_sequence(
