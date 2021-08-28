@@ -123,7 +123,7 @@ def train(
             }
             input_ids = batch["input_ids"]  # (b, seq)
             word_idxs = batch["word_idxs"]  # (b, word)
-            labels = batch["labels"]  # (b, seq, attr)
+            labels = batch["labels"]  # (b, word, attr)
 
             attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(

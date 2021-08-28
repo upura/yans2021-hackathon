@@ -54,20 +54,20 @@ def predict(
             }
             input_ids = batch["input_ids"]  # (b, seq)
             word_idxs = batch["word_idxs"]  # (b, word)
-            labels = batch["labels"]  # (b, seq, attr) or None
+            labels = batch["labels"]  # (b, word, attr) or None
 
             attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
 
-            # (b, seq, attr, 3)
+            # (b, word, attr, 3)
             _, logits = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 pooling_matrix=pooling_matrix,
             )
-            preds: List[List[List[int]]] = []  # (attr, b, seq)
+            preds: List[List[List[int]]] = []  # (attr, b, word)
             # attribute loop
             for attr_idx in range(logits.size(2)):
                 preds.append([
@@ -83,14 +83,14 @@ def predict(
     total_preds_reshaped = [
         [pred for preds in total_preds for pred in preds[attr]]
         for attr in range(num_attr)
-    ]  # (attr, N, seq)
+    ]  # (attr, N, word)
     total_trues_reshaped = [
         [
             [t for t in true if t != NerDataset.PAD_FOR_LABELS]
             for trues in total_trues for true in trues[attr]
         ]
         for attr in range(num_attr)
-    ]  # (attr, N, seq)
+    ]  # (attr, N, word)
 
     if sent_wise:
         total_preds_reshaped = [
@@ -106,7 +106,7 @@ def predict(
 
 
 def viterbi(
-    logits: torch.Tensor,  # (seq, 3)
+    logits: torch.Tensor,  # (word, 3)
     penalty=float("inf")
 ) -> List[int]:
     num_tags = 3

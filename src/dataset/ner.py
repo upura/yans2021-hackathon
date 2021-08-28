@@ -80,7 +80,7 @@ class NerDataset(Dataset):
         feature = InputFeature(
             input_ids=input_ids,  # (seq)
             word_idxs=word_idxs,  # (word)
-            labels=labels,  # (attr, seq)
+            labels=labels,  # (attr, word)
         )
 
         return feature
@@ -113,7 +113,7 @@ def ner_collate_fn(features: List[Dict[str, Any]]) -> Dict[str, Any]:
                     [torch.as_tensor(f[field]).transpose(0, 1) for f in features],
                     batch_first=True,
                     padding_value=NerDataset.PAD_FOR_LABELS,
-                )  # (b, seq, attr)
+                )  # (b, word, attr)
                 batch[field] = feats
     return batch
 
