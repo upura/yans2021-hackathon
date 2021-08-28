@@ -100,20 +100,21 @@ class PseudoDataset(Dataset):
             for line in f:
                 system_result: SystemResult = SystemResult.from_json(line.strip())
                 results[system_result.page_id] = system_result
-        examples = [ex for data in shinra_data for ex in cls._shinra2examples(data, results[data.page_id])]
+        examples = [ex for data in shinra_data for ex in cls._shinra2examples(data, results.get(data.page_id, None))]
         return cls(examples, tokenizer)
 
     @staticmethod
-    def _shinra2examples(shinra_data: ShinraData, result: SystemResult) -> Generator[PseudoExample, None, None]:
-        iobs: List[List[List[str]]]  # (sent, attr, word)
-        confs: List[List[List[float]]]  # (sent, attr, word)
-        iobs, confs = result.to_iob_conf(shinra_data)
+    def _shinra2examples(shinra_data: ShinraData, result: Optional[SystemResult],
+                         ) -> Generator[PseudoExample, None, None]:
+        iobs: Optional[List[List[List[str]]]]  # (sent, attr, word)
+        confs: Optional[List[List[List[float]]]]  # (sent, attr, word)
+        iobs, confs = result.to_iob_conf(shinra_data) if result else (None, None)
         for idx in shinra_data.valid_line_ids:
             example = PseudoExample(
                 tokens=shinra_data.tokens[idx],
                 word_idxs=shinra_data.word_alignments[idx],
-                labels=iobs[idx],
-                confidence=confs[idx],
+                labels=iobs and iobs[idx],
+                confidence=confs and confs[idx],
             )
             yield example
 
