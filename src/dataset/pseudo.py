@@ -9,16 +9,16 @@ from dataclasses_json import dataclass_json
 from .shinra import ShinraData, DataOffset
 
 
-@dataclass(frozen=True)
 @dataclass_json
+@dataclass(frozen=True)
 class AttributeResult:
     html_offset: DataOffset
     text_offset: DataOffset
     system: List[str]
 
 
-@dataclass(frozen=True)
 @dataclass_json
+@dataclass(frozen=True)
 class SystemResult:
     title: str
     page_id: str
