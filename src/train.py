@@ -1,8 +1,8 @@
 import argparse
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import List
-from datetime import datetime
 
 import joblib
 import mlflow
@@ -51,10 +51,15 @@ def parse_arg() -> argparse.Namespace:
         "--input_path", type=str, help="Specify input path in SHINRA2020"
     )
     parser.add_argument(
-        "--save_path", type=str, help="Specify path to directory where trained checkpoints are saved"
+        "--save_path",
+        type=str,
+        help="Specify path to directory where trained checkpoints are saved",
     )
     parser.add_argument(
-        "--additional_name", "-a", type=str, help="Specify any string to identify experiment condition"
+        "--additional_name",
+        "-a",
+        type=str,
+        help="Specify any string to identify experiment condition",
     )
     parser.add_argument(
         "--lr", type=float, help="Specify attribute_list path in SHINRA2020"
@@ -109,7 +114,11 @@ def train(
     losses = []
     for e in range(args.epoch):
         train_dataloader = DataLoader(
-            train_dataset, batch_size=args.bsz, collate_fn=ner_collate_fn, shuffle=True, num_workers=4,
+            train_dataset,
+            batch_size=args.bsz,
+            collate_fn=ner_collate_fn,
+            shuffle=True,
+            num_workers=4,
         )
         bar = tqdm(total=len(train_dataset))
 
@@ -183,24 +192,30 @@ def main():
         shinra_datum = joblib.load(cache_path)
     else:
         print(f"Cached shinra_datum not found. Building one from {args.input_path}")
-        shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
+        shinra_datum = ShinraData.from_shinra2020_format(
+            Path(args.input_path), mode="train"
+        )
         joblib.dump(shinra_datum, cache_path, compress=3)
 
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
 
-    train_shinra_datum, valid_shinra_datum = train_test_split(shinra_datum, test_size=0.1)
+    train_shinra_datum, valid_shinra_datum = train_test_split(
+        shinra_datum, test_size=0.1
+    )
     train_dataset = NerDataset.from_shinra(train_shinra_datum, tokenizer)
     valid_dataset = NerDataset.from_shinra(valid_shinra_datum, tokenizer)
 
     save_dir = Path(args.save_path).joinpath(
-        f"{category}{datetime.now().strftime(r'%m%d_%H%M')}" +
-        (f"_{args.additional_name}" if args.additional_name else "")
+        f"{category}{datetime.now().strftime(r'%m%d_%H%M')}"
+        + (f"_{args.additional_name}" if args.additional_name else "")
     )
     save_dir.mkdir(parents=True)
 
     mlflow.start_run()
     mlflow.log_params(vars(args))
-    train(model, train_dataset, valid_dataset, shinra_datum[0].attributes, save_dir, args)
+    train(
+        model, train_dataset, valid_dataset, shinra_datum[0].attributes, save_dir, args
+    )
     torch.save(model.state_dict(), save_dir / "last.model")
     mlflow.end_run()
 
