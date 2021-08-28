@@ -179,9 +179,10 @@ def train(
 def main():
     args = parse_arg()
 
-    bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
-    tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
-
+    bert = AutoModel.from_pretrained("../models/NICT_BERT-base_JapaneseWikipedia_100K/")
+    tokenizer = AutoTokenizer.from_pretrained(
+        "../models/NICT_BERT-base_JapaneseWikipedia_100K/"
+    )
     # dataset = [ShinraData(), ....]
     category = Path(args.input_path).parts[-1]
     dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
