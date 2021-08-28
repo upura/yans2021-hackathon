@@ -92,6 +92,20 @@ def evaluate(model: nn.Module, dataset: NerDataset, attributes: List[str]):
     return f1
 
 
+def load_shinra_datum(input_path: Path, category: str, mode: str) -> List[ShinraData]:
+    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
+    dataset_cache_dir.mkdir(exist_ok=True)
+    cache_path = dataset_cache_dir / f"{category}_{mode}_dataset.pkl"
+    if cache_path.exists():
+        print(f"Loading cached dataset from {cache_path}")
+        shinra_datum = joblib.load(cache_path)
+    else:
+        print(f"Cached shinra_datum not found. Building one from {input_path}")
+        shinra_datum = ShinraData.from_shinra2020_format(input_path, mode=mode)
+        joblib.dump(shinra_datum, cache_path, compress=3)
+    return shinra_datum
+
+
 def train(
     model: nn.Module,
     train_dataset: NerDataset,
@@ -169,18 +183,9 @@ def main():
     bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
-    # dataset = [ShinraData(), ....]
-    category = Path(args.input_path).parts[-1]
-    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
-    dataset_cache_dir.mkdir(exist_ok=True)
-    cache_path = dataset_cache_dir / f"{category}_train_dataset.pkl"
-    if cache_path.exists():
-        print(f"Loading cached dataset from {cache_path}")
-        shinra_datum = joblib.load(cache_path)
-    else:
-        print(f"Cached shinra_datum not found. Building one from {args.input_path}")
-        shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
-        joblib.dump(shinra_datum, cache_path, compress=3)
+    input_path = Path(args.inputpath)
+    category = input_path.parts[-1]
+    shinra_datum = load_shinra_datum(input_path, category, mode="train")
 
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
 
@@ -189,7 +194,7 @@ def main():
     valid_dataset = NerDataset.from_shinra(valid_shinra_datum, tokenizer)
 
     if args.pseudo_input_path:
-        pseudo_shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode="pseudo")
+        pseudo_shinra_datum = load_shinra_datum(input_path, category, mode="pseudo")
         pseudo_train_dataset = PseudoDataset.from_shinra(pseudo_shinra_datum, args.pseudo_input_path, tokenizer)
         train_dataset = ConcatDataset((train_dataset, pseudo_train_dataset))
 
