@@ -1,7 +1,8 @@
 from collections import defaultdict
 from dataclasses import asdict, dataclass
+from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Dict, List, Union, Generator, Tuple
+from typing import Any, Dict, List, Union, Tuple
 
 from dataclasses_json import dataclass_json
 from torch.utils.data import Dataset
@@ -95,15 +96,19 @@ class PseudoDataset(Dataset):
             for line in f:
                 system_result: SystemResult = SystemResult.from_json(line.strip())
                 results[system_result.page_id] = system_result
-        examples = [ex for data in shinra_data for ex in cls._shinra2examples(data, results[data.page_id])]
-        return cls(examples, tokenizer)
+        with Pool() as p:
+            args = [(data, results[data.page_id]) for data in shinra_data]
+            exs_list = p.starmap(cls._shinra2examples, args)
+        # examples = [ex for data in shinra_data for ex in cls._shinra2examples(data, results[data.page_id])]
+        return cls(sum(exs_list, []), tokenizer)
 
     @staticmethod
     def _shinra2examples(shinra_data: ShinraData, result: SystemResult,
-                         ) -> Generator[PseudoExample, None, None]:
+                         ) -> List[PseudoExample]:
         iobs: List[List[List[str]]]  # (sent, attr, word)
         confs: List[List[List[float]]]  # (sent, attr, word)
         iobs, confs = result.to_iob_conf(shinra_data)
+        examples = []
         for idx in shinra_data.valid_line_ids:
             example = PseudoExample(
                 tokens=shinra_data.tokens[idx],
@@ -111,7 +116,8 @@ class PseudoDataset(Dataset):
                 labels=iobs[idx],
                 confidence=confs[idx],
             )
-            yield example
+            examples.append(example)
+        return examples
 
     @staticmethod
     def _convert_example_to_feature(

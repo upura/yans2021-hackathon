@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Union, Generator
+from multiprocessing import Pool
 
 import torch
 import torch.nn.utils.rnn as rnn
@@ -42,21 +43,27 @@ class NerDataset(Dataset):
         tokenizer: PreTrainedTokenizer
     ) -> "NerDataset":
         if isinstance(shinra_data, list):
-            examples = [ex for data in shinra_data for ex in cls._shinra2examples(data)]
+            with Pool() as p:
+                # args = [(data, results[data.page_id]) for data in shinra_data]
+                exs_list = p.starmap(cls._shinra2examples, shinra_data)
+            examples = sum(exs_list, [])
+            # examples = [ex for data in shinra_data for ex in cls._shinra2examples(data)]
         else:
             examples = list(cls._shinra2examples(shinra_data))
         return cls(examples, tokenizer)
 
     @staticmethod
-    def _shinra2examples(shinra_data: ShinraData) -> Generator[NerExample, None, None]:
+    def _shinra2examples(shinra_data: ShinraData) -> List[NerExample]:
         iobs = shinra_data.to_iob() if shinra_data.nes is not None else None
+        examples = []
         for idx in shinra_data.valid_line_ids:
             example = NerExample(
                 tokens=shinra_data.tokens[idx],
                 word_idxs=shinra_data.word_alignments[idx],
                 labels=iobs[idx] if shinra_data.nes is not None else None,
             )
-            yield example
+            examples.append(example)
+        return examples
 
     @staticmethod
     def _convert_example_to_feature(
