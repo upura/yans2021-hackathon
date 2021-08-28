@@ -134,8 +134,7 @@ def train(
             ).to(device)
 
             loss, output = model(
-                input_ids=input_ids,
-                labels=labels,
+                **batch,
                 pooling_matrix=pooling_matrix,
             )
 

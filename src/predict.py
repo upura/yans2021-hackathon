@@ -62,7 +62,7 @@ def predict(
 
             # (b, word, attr, 3)
             _, logits = model(
-                input_ids=input_ids,
+                **batch,
                 pooling_matrix=pooling_matrix,
             )
             preds: List[List[List[int]]] = []  # (attr, b, word)
