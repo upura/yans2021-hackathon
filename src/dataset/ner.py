@@ -26,7 +26,7 @@ class InputFeature:
 
 class NerDataset(Dataset):
     LABEL2ID = {"O": 0, "B": 1, "I": 2}
-    MAX_SEQ_LENGTH = 512
+    MAX_SEQ_LENGTH = 256
     PAD_FOR_INPUT_IDS = 0
     PAD_FOR_LABELS = -1
 
