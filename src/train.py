@@ -129,14 +129,12 @@ def train(
             word_idxs = batch["word_idxs"]  # (b, word)
             labels = batch["labels"]  # (b, word, attr)
 
-            attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
 
             loss, output = model(
                 input_ids=input_ids,
-                attention_mask=attention_mask,
                 labels=labels,
                 pooling_matrix=pooling_matrix,
             )

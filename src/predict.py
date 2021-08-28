@@ -56,7 +56,6 @@ def predict(
             word_idxs = batch["word_idxs"]  # (b, word)
             labels = batch["labels"]  # (b, word, attr) or None
 
-            attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
                 input_ids, word_idxs, pool_type="head"
             ).to(device)
@@ -64,7 +63,6 @@ def predict(
             # (b, word, attr, 3)
             _, logits = model(
                 input_ids=input_ids,
-                attention_mask=attention_mask,
                 pooling_matrix=pooling_matrix,
             )
             preds: List[List[List[int]]] = []  # (attr, b, word)
