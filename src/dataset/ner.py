@@ -112,13 +112,22 @@ def ner_collate_fn(features: List[Dict[str, Any]]) -> Dict[str, Any]:
             batch[field] = feats
         elif field == "word_idxs":
             batch[field] = [f[field] for f in features]
-        elif field in ("labels", "confidences"):
+        elif field == "labels":
             batch[field] = None
             if first[field] is not None:
                 feats = rnn.pad_sequence(
                     [torch.as_tensor(f[field]).transpose(0, 1) for f in features],
                     batch_first=True,
                     padding_value=NerDataset.PAD_FOR_LABELS,
+                )  # (b, word, attr)
+                batch[field] = feats
+        elif field == "confidences":
+            batch[field] = None
+            if first[field] is not None:
+                feats = rnn.pad_sequence(
+                    [torch.as_tensor(f[field]).transpose(0, 1) for f in features],
+                    batch_first=True,
+                    padding_value=0.0,
                 )  # (b, word, attr)
                 batch[field] = feats
     return batch

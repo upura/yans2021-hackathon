@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import BertModel
 
+from dataset.ner import NerDataset
+
 
 def create_pooler_matrix(
     input_ids: torch.Tensor, word_idxs: List[List[int]], pool_type="head"
@@ -81,9 +83,12 @@ class BertForMultilabelNER(nn.Module):
 
         loss = None
         if labels is not None:
-            loss = F.cross_entropy(logits[:, :-1].transpose(1, 3), labels, weight=confidences, reduction="mean")
-            # for attr_idx in range(self.num_attributes):
-            #     loss += loss_fn(logits[:, :-1, attr_idx, :].reshape(-1, 3), labels[:, :, attr_idx].view(-1))
-            # loss /= self.num_attributes
+            raw_loss = F.cross_entropy(
+                logits[:, :-1].permute(0, 3, 1, 2),
+                labels,
+                reduction="none",
+                ignore_index=NerDataset.PAD_FOR_LABELS,
+            )  # (b, word, attr)
+            loss = (raw_loss * confidences).sum() / (confidences.sum() + 1e-6)
 
         return loss, logits
