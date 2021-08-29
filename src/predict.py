@@ -4,6 +4,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Tuple, List
 import _pickle as pickle
+from multiprocessing import Pool
 
 import torch
 import torch.nn as nn
@@ -49,6 +50,13 @@ def load_shinra_datum(input_path: Path, category: str, mode: str) -> List[Shinra
     return shinra_datum
 
 
+def get_pred(logits: torch.Tensor, word_idxs) -> List[List[int]]:
+    return [
+        viterbi(logit)[: len(word_idx) - 1]
+        for logit, word_idx in zip(logits, word_idxs)
+    ]
+
+
 def predict(
     model: nn.Module,
     dataset: NerDataset,
@@ -80,13 +88,16 @@ def predict(
 
             _, logits = model(**batch, pooling_matrix=pooling_matrix)  # _, (b, word, attr, 3)
 
-            preds: List[List[List[int]]] = []  # (attr, b, word)
+            with Pool(processes=logits.size(2)) as p:
+                args = [(logits[:, :, attr_idx, :].detach().cpu(), batch["word_idxs"])
+                        for attr_idx in range(logits.size(2))]
+                preds: List[List[List[int]]] = p.starmap(get_pred, args)  # (attr, b, word)
             # attribute loop
-            for attr_idx in range(logits.size(2)):
-                preds.append([
-                    viterbi(logit)[: len(word_idx) - 1]
-                    for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), batch["word_idxs"])
-                ])
+            # for attr_idx in range(logits.size(2)):
+            #     preds.append([
+            #         viterbi(logit)[: len(word_idx) - 1]
+            #         for logit, word_idx in zip(logits[:, :, attr_idx, :].detach().cpu(), batch["word_idxs"])
+            #     ])
 
             total_preds.append(preds)
             # test dataの場合truesは使わないので適当にpredsを入れる
