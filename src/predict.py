@@ -167,7 +167,7 @@ def main():
     # dataset = [ShinraData(), ....]
     input_path = Path(args.input_path)
     category = input_path.parts[-1]
-    shinra_datum = load_shinra_datum(input_path, category, mode="train")
+    shinra_datum = load_shinra_datum(input_path, category, mode=args.mode)
 
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
