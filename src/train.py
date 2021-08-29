@@ -2,6 +2,7 @@ import argparse
 import os
 from pathlib import Path
 from typing import List
+from collections import OrderedDict
 from datetime import datetime
 import _pickle as pickle
 
@@ -78,6 +79,12 @@ def parse_arg() -> argparse.Namespace:
     )
     parser.add_argument(
         "--note", type=str, help="Specify attribute_list path in SHINRA2020"
+    )
+    parser.add_argument(
+        "--bert", type=str, default="cl-tohoku/bert-base-japanese", help="Specify attribute_list path in SHINRA2020"
+    )
+    parser.add_argument(
+        "--initial_weight_path", type=str, help="Specify attribute_list path in SHINRA2020"
     )
 
     return parser.parse_args()
@@ -182,14 +189,21 @@ def train(
 def main():
     args = parse_arg()
 
-    bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
-    tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
+    bert = AutoModel.from_pretrained(args.bert)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert)
 
     input_path = Path(args.input_path)
     category = input_path.parts[-1]
     shinra_datum = load_shinra_datum(input_path, category, mode="train")
 
-    model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
+    model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes), dropout=0.0)
+
+    if args.initial_weight_path:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        state_dict = torch.load(args.initial_weight_path, map_location=device)
+        model.load_state_dict(OrderedDict({k.replace("module.", ""): v for k, v in state_dict.items()}))
+        print(f"loaded initial weights from {args.initial_weight_path}")
+
 
     train_shinra_datum, valid_shinra_datum = train_test_split(shinra_datum, test_size=0.1)
     train_dataset = NerDataset.from_shinra(train_shinra_datum, tokenizer)
