@@ -21,7 +21,7 @@ def ner_for_shinradata(
     tokenizer: PreTrainedTokenizer,
     shinra_batch: List[ShinraData]
 ) -> List[ShinraData]:
-    assert all(shinra_data.nes is None for shinra_data in shinra_batch)
+    # assert all(shinra_data.nes is None for shinra_data in shinra_batch)  # commentout since final data contain train
     dataset = NerDataset.from_shinra(shinra_batch, tokenizer)
     total_preds, _ = predict(model, dataset, sent_wise=True)
     sidx = 0
