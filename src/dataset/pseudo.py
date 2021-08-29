@@ -59,6 +59,9 @@ class SystemResult:
                     continue
 
                 for idx in range(start_offset, end_offset + 1):
+                    if len(iobs[start_line][attr_idx]) <= idx:
+                        print(f"index out of range. ({self.page_id}, {attr_result})")
+                        continue
                     iobs[start_line][attr_idx][idx] = "B" if idx == start_offset else "I"
                     confs[start_line][attr_idx][idx] = len(attr_result.system) / num_systems  # normalize
 
