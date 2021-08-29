@@ -3,8 +3,8 @@ import os
 from collections import OrderedDict
 from pathlib import Path
 from typing import Tuple, List
+import _pickle as pickle
 
-import joblib
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -26,6 +26,22 @@ def ner_for_shinradata(
     total_preds, _ = predict(model, dataset, sent_wise=True)
     shinra_data.add_nes_from_iob(total_preds)
     return shinra_data
+
+
+def load_shinra_datum(input_path: Path, category: str, mode: str) -> List[ShinraData]:
+    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
+    dataset_cache_dir.mkdir(exist_ok=True)
+    cache_path = dataset_cache_dir / f"{category}_{mode}_dataset.pkl"
+    if cache_path.exists():
+        print(f"Loading cached dataset from {cache_path}")
+        with cache_path.open(mode="rb") as f:
+            shinra_datum = pickle.load(f)
+    else:
+        print(f"Cached shinra_datum not found. Building one from {input_path}")
+        shinra_datum = ShinraData.from_shinra2020_format(input_path, mode=mode)
+        with cache_path.open(mode="wb") as f:
+            pickle.dump(shinra_datum, f)
+    return shinra_datum
 
 
 def predict(
@@ -141,17 +157,9 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
     # dataset = [ShinraData(), ....]
-    category = Path(args.input_path).parts[-1]
-    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
-    dataset_cache_dir.mkdir(exist_ok=True)
-    cache_path = dataset_cache_dir / f"{category}_{args.mode}_dataset.pkl"
-    if cache_path.exists():
-        print(f"Loading cached dataset from {cache_path}")
-        shinra_datum = joblib.load(cache_path)
-    else:
-        print(f"Cached dataset not found. Building one from {args.input_path}")
-        shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode=args.mode)
-        joblib.dump(shinra_datum, cache_path, compress=3)
+    input_path = Path(args.input_path)
+    category = input_path.parts[-1]
+    shinra_datum = load_shinra_datum(input_path, category, mode="train")
 
     model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

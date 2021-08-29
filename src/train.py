@@ -3,8 +3,8 @@ import os
 from pathlib import Path
 from typing import List
 from datetime import datetime
+import _pickle as pickle
 
-import joblib
 import mlflow
 import torch
 import torch.nn as nn
@@ -98,11 +98,13 @@ def load_shinra_datum(input_path: Path, category: str, mode: str) -> List[Shinra
     cache_path = dataset_cache_dir / f"{category}_{mode}_dataset.pkl"
     if cache_path.exists():
         print(f"Loading cached dataset from {cache_path}")
-        shinra_datum = joblib.load(cache_path)
+        with cache_path.open(mode="rb") as f:
+            shinra_datum = pickle.load(f)
     else:
         print(f"Cached shinra_datum not found. Building one from {input_path}")
         shinra_datum = ShinraData.from_shinra2020_format(input_path, mode=mode)
-        joblib.dump(shinra_datum, cache_path, compress=3)
+        with cache_path.open(mode="wb") as f:
+            pickle.dump(shinra_datum, f)
     return shinra_datum
 
 
