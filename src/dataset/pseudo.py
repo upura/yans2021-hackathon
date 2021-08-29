@@ -78,7 +78,7 @@ class PseudoExample:
 
 class PseudoDataset(Dataset):
     LABEL2ID = {"O": 0, "B": 1, "I": 2}
-    MAX_SEQ_LENGTH = 256
+    MAX_SEQ_LENGTH = 128
     PAD_FOR_INPUT_IDS = 0
     PAD_FOR_LABELS = -1
 
