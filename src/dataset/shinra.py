@@ -147,7 +147,7 @@ class ShinraData:
         title_line: str = "".join(
             [t[2:] if t.startswith("##") else t for t in tokens[4]]
         )
-        pos = title_line.find("-jawiki")
+        pos = title_line.find("-WikipediaDump")
         title = title_line[:pos]
 
         # find word alignments = start positions of words
@@ -256,7 +256,8 @@ class ShinraData:
                         token_offset.end = OffsetPoint(line_id, end_offset)
                         text_offset.end = text_offsets[end_offset - 1].end
                         text = "".join(
-                            tokens[token_offset.start.offset: token_offset.end.offset]
+                            [t[2:] if t.startswith("##") else t
+                             for t in tokens[token_offset.start.offset : token_offset.end.offset]]
                         )
                         token_offset.text = text
                         text_offset.text = text
