@@ -19,13 +19,18 @@ from model import BertForMultilabelNER, create_pooler_matrix
 def ner_for_shinradata(
     model: nn.Module,
     tokenizer: PreTrainedTokenizer,
-    shinra_data: ShinraData
-) -> ShinraData:
-    assert shinra_data.nes is None
-    dataset = NerDataset.from_shinra(shinra_data, tokenizer)
+    shinra_batch: List[ShinraData]
+) -> List[ShinraData]:
+    assert all(shinra_data.nes is None for shinra_data in shinra_batch)
+    dataset = NerDataset.from_shinra(shinra_batch, tokenizer)
     total_preds, _ = predict(model, dataset, sent_wise=True)
-    shinra_data.add_nes_from_iob(total_preds)
-    return shinra_data
+    sidx = 0
+    for shinra_data in shinra_batch:
+        eidx = sidx + len(shinra_data.valid_line_ids)
+        shinra_data.add_nes_from_iob(total_preds[sidx:eidx])
+        sidx = eidx
+    assert sidx == len(total_preds)
+    return shinra_batch
 
 
 def load_shinra_datum(input_path: Path, category: str, mode: str) -> List[ShinraData]:
@@ -143,7 +148,10 @@ def parse_arg() -> argparse.Namespace:
         "--model_path", type=str, help="Specify path to trained checkpoint"
     )
     parser.add_argument(
-        "--mode", type=str, choices=["leaderboard", "all"], default="all",
+        "--shinra_bsz", type=int, default=256, help="Specify number of documents per 1 dataloader"
+    )
+    parser.add_argument(
+        "--mode", type=str, choices=["leaderboard", "all", "final"], default="all",
         help="Specify 'leaderboard' to evaluate leaderboard data and specify 'all' to evaluate all data"
     )
 
@@ -170,10 +178,11 @@ def main():
 
     save_dir = Path(args.model_path).parent
     with save_dir.joinpath(f"{args.mode}.json").open(mode="wt") as f:
-        for data in tqdm(shinra_datum):
-            processed_data = ner_for_shinradata(model, tokenizer, data)
-            if processed_data.nes:
-                f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in processed_data.nes) + "\n")
+        for shinra_batch in tqdm(DataLoader(shinra_datum, batch_size=args.shinra_bsz, shuffle=False,
+                                            collate_fn=lambda x: x)):
+            for processed_data in ner_for_shinradata(model, tokenizer, shinra_batch):
+                if processed_data.nes:
+                    f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in processed_data.nes) + "\n")
 
 
 if __name__ == "__main__":
