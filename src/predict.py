@@ -176,11 +176,15 @@ def main():
 
     save_dir = Path(args.model_path).parent
     with save_dir.joinpath(f"{args.mode}.json").open(mode="wt") as f:
-        for shinra_batch in tqdm(DataLoader(shinra_datum, batch_size=args.shinra_bsz, shuffle=False,
-                                            collate_fn=lambda x: x)):
-            for processed_data in ner_for_shinradata(model, tokenizer, shinra_batch):
-                if processed_data.nes:
-                    f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in processed_data.nes) + "\n")
+        for tagged_data in [d for d in shinra_datum if d.nes is not None]:
+            f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in tagged_data.nes) + "\n")
+        for shinra_batch in tqdm(DataLoader(
+            [d for d in shinra_datum if d.nes is None],
+            batch_size=args.shinra_bsz,
+            shuffle=False,
+            collate_fn=lambda x: x)):
+            for tagged_data in ner_for_shinradata(model, tokenizer, shinra_batch):
+                f.write("\n".join(ne.to_json(ensure_ascii=False) for ne in tagged_data.nes) + "\n")
 
 
 if __name__ == "__main__":
