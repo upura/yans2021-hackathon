@@ -54,7 +54,7 @@ def predict(
     dataset: NerDataset,
     sent_wise: bool = False
 ) -> Tuple[List[List[List[int]]], List[List[List[int]]]]:
-    batch_size_per_gpu = 16
+    batch_size_per_gpu = 1536
     num_gpus = torch.cuda.device_count()
     dataloader = DataLoader(
         dataset,
