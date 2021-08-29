@@ -89,3 +89,58 @@ class BertForMultilabelNER(nn.Module):
             loss = (raw_loss * confidences).sum() / (confidences.sum() + 1e-6)
 
         return loss, logits
+
+
+class BertForMultilabelNER2(nn.Module):
+    def __init__(
+        self,
+        bert: BertModel,
+        attribute_num: int,
+        dropout: float = 0.1
+    ):
+        super().__init__()
+        self.bert: BertModel = bert
+        self.dropout = nn.Dropout(dropout)
+        self.num_attributes: int = attribute_num
+
+        # classifier that classifies token into IOB tag (B, I, O) for each attribute
+        bert_hidden_size = self.bert.config.hidden_size
+        self.output_layer = nn.Linear(bert_hidden_size, self.num_attributes * bert_hidden_size)
+
+        self.relu = nn.ReLU()
+
+        # classifier that classifies token into IOB tag (B, I, O) for each attribute
+        self.classifier = nn.Linear(bert_hidden_size, 3)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,  # (b, seq)
+        labels,  # (b, word, attr) or None
+        confidences,  # (b, word, attr) or None
+        pooling_matrix,  # (b, word, seq)
+        **_,
+    ) -> Tuple[Optional[torch.Tensor], torch.Tensor]:
+        batch_size, word_len, sequence_len = pooling_matrix.size()
+
+        bert_out = self.bert(input_ids, attention_mask=(input_ids > 0))
+        # create word-level representations using pooler matrix
+        # (b, word, seq), (b, seq, hid) -> (b, word, hid)
+        sequence_output = torch.bmm(pooling_matrix, bert_out.last_hidden_state)
+        sequence_output = self.relu(self.dropout(sequence_output))  # (b, word, hid)
+
+        # hiddens = [self.relu(layer(sequence_output)) for layer in self.output_layer]
+        # (b, word, hid) -> (b, word, attr*hid) -> (b, word, attr, hid)
+        output = self.output_layer(sequence_output).view(batch_size, word_len, self.num_attributes, -1)
+        logits = self.classifier(self.relu(self.dropout(output)))  # (b, word, attr, 3)
+
+        loss = None
+        if labels is not None:
+            raw_loss = F.cross_entropy(
+                logits[:, :-1].permute(0, 3, 1, 2),
+                labels,
+                reduction="none",
+                ignore_index=NerDataset.PAD_FOR_LABELS,
+            )  # (b, word, attr)
+            loss = (raw_loss * confidences).sum() / (confidences.sum() + 1e-6)
+
+        return loss, logits
