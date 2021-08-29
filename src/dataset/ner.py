@@ -44,8 +44,8 @@ class NerDataset(Dataset):
     ) -> "NerDataset":
         if isinstance(shinra_data, list):
             with Pool() as p:
-                # args = [(data, results[data.page_id]) for data in shinra_data]
-                exs_list = p.starmap(cls._shinra2examples, shinra_data)
+                args = [(data,) for data in shinra_data]
+                exs_list = p.starmap(cls._shinra2examples, args)
             examples = sum(exs_list, [])
             # examples = [ex for data in shinra_data for ex in cls._shinra2examples(data)]
         else:
