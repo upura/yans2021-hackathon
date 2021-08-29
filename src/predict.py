@@ -154,6 +154,9 @@ def parse_arg() -> argparse.Namespace:
         "--mode", type=str, choices=["leaderboard", "all", "final"], default="all",
         help="Specify 'leaderboard' to evaluate leaderboard data and specify 'all' to evaluate all data"
     )
+    parser.add_argument(
+        "--bert", type=str, default="cl-tohoku/bert-base-japanese", help="Specify attribute_list path in SHINRA2020"
+    )
 
     return parser.parse_args()
 
@@ -161,8 +164,8 @@ def parse_arg() -> argparse.Namespace:
 def main():
     args = parse_arg()
 
-    bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
-    tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
+    bert = AutoModel.from_pretrained(args.bert)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert)
 
     # dataset = [ShinraData(), ....]
     input_path = Path(args.input_path)
