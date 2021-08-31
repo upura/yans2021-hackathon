@@ -124,8 +124,7 @@ def train(
     args: argparse.Namespace,
 ):
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-    # scheduler = get_scheduler(
-    #     args.bsz, args.grad_acc, args.epoch, args.warmup, optimizer, len(train_dataset))
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, arg.epoch, eta_min=1e-5, last_epoch=-1)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     early_stopping = EarlyStopping(patience=10, verbose=1)
@@ -170,7 +169,7 @@ def train(
             if (step + 1) % args.grad_acc == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
                 optimizer.step()
-                # scheduler.step()
+                scheduler.step()
                 optimizer.zero_grad()
 
         losses.append(total_loss / len(train_dataset))
