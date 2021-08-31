@@ -27,12 +27,12 @@ class DataOffset:
 @dataclass_json
 @dataclass(frozen=True)
 class Annotation:
-    page_id: str
+    page_id: int
     title: str
     attribute: str
     html_offset: DataOffset
     text_offset: DataOffset
-    token_offset: DataOffset
+    # token_offset: DataOffset
     ENE: str
 
 
@@ -51,7 +51,7 @@ class NamedEntity:
     title: str
     attribute: str
     text_offset: NEDataOffset
-    token_offset: NEDataOffset
+    # token_offset: NEDataOffset
     ENE: str
 
     @classmethod
@@ -63,9 +63,9 @@ class NamedEntity:
             text_offset=NEDataOffset(
                 annotation.text_offset.start, annotation.text_offset.end, None
             ),
-            token_offset=NEDataOffset(
-                annotation.token_offset.start, annotation.token_offset.end, None
-            ),
+            # token_offset=NEDataOffset(
+            #     annotation.token_offset.start, annotation.token_offset.end, None
+            # ),
             ENE=annotation.ENE,
         )
 
@@ -77,7 +77,7 @@ class ShinraData:
         self.attributes: List[str] = attributes
         self.attr2idx = {attr: idx for idx, attr in enumerate(self.attributes)}
 
-        self.page_id: str = params["page_id"]
+        self.page_id: int = params["page_id"]
         self.page_title: str = params["page_title"]
         self.category: str = params["category"]
         self.ene: str = ShinraData.CATEGORY2ENE[self.category]
@@ -137,7 +137,7 @@ class ShinraData:
         annotations: Dict[str, List[Annotation]],
         attributes: List[str],
     ) -> "ShinraData":
-        page_id: str = token_file.stem
+        page_id: str = int(token_file.stem)
         tokens, text_offsets = cls._load_tokens(token_file, vocab)
         valid_line_ids: List[int] = [
             idx for idx, token in enumerate(tokens) if len(token) > 0
@@ -170,6 +170,8 @@ class ShinraData:
 
         if page_id in annotations:
             params["nes"] = annotations[page_id]
+        # if int(page_id) in annotations:
+        #     params["nes"] = annotations[int(page_id)]
 
         return cls(attributes, params=params)
 
@@ -315,10 +317,10 @@ class ShinraData:
             for tokens in self.word_alignments
         ]
         for ne in self.nes:
-            start_line: int = ne.token_offset.start.line_id
-            start_offset: int = ne.token_offset.start.offset
-            end_line: int = ne.token_offset.end.line_id
-            end_offset: int = ne.token_offset.end.offset
+            start_line: int = ne.text_offset.start.line_id
+            start_offset: int = ne.text_offset.start.offset
+            end_line: int = ne.text_offset.end.line_id
+            end_offset: int = ne.text_offset.end.offset
 
             # 文を跨いだentityは除外
             if start_line != end_line:
@@ -326,10 +328,13 @@ class ShinraData:
 
             # 正解となるsubwordを含むwordまでタグ付
             attr_idx: int = self.attr2idx[ne.attribute]
-            ne_start: int = self.sub2word[start_line][start_offset]
-            ne_end: int = self.sub2word[end_line][end_offset - 1] + 1
+            # ne_start: int = self.sub2word[start_line][start_offset]
+            # ne_end: int = self.sub2word[end_line][end_offset - 1] + 1
 
-            for idx in range(ne_start, ne_end):
-                iobs[start_line][attr_idx][idx] = "B" if idx == ne_start else "I"
+            for idx in range(start_offset, end_offset + 1):
+                if len(iobs[start_line][attr_idx]) <= idx:
+                        # print(f"index out of range. ({self.page_id}, {attr_result})")
+                    continue
+                iobs[start_line][attr_idx][idx] = "B" if idx == start_offset else "I"
 
         return iobs

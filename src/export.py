@@ -64,6 +64,8 @@ def export(
     all_words = []
     all_labels = []
     for shinra_data in shinra_datum:
+        if not shinra_data.nes:
+            continue
         # words: List[List[str]] = shinra_data.words  # (sent, word)
         # iobs = shinra_data.to_iob()  # (sent, attr, word)
         for words, iobs in zip(shinra_data.words, shinra_data.to_iob()):
@@ -74,8 +76,16 @@ def export(
                 for i, lbl in enumerate(iob):
                     if lbl in ("I", "B"):
                         labels[i] = f"{lbl}-{attributes[attr_idx]}"
-            all_words.append(words)
-            all_labels.append(labels)
+            filtered_words = []
+            filtered_labels = []
+            for word, label in zip(words, labels):
+                if word == '':
+                    continue
+                filtered_words.append(word)
+                filtered_labels.append(label)
+            if filtered_words:
+                all_words.append(filtered_words)
+                all_labels.append(filtered_labels)
 
     with open('tokens.txt', 'wb') as f:
         pickle.dump(all_words, f)
