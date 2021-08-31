@@ -23,12 +23,12 @@ python train.py \
     --bsz 32 \
     --epoch 50 \
     --grad_acc 1 \
-    --grad_clip 1.0 
+    --grad_clip 1.0
 ```
 
 ## 予測
-`sh predict.sh`.   
-前処理済みのデータ（１カテゴリ）を入力に，森羅2020の出力形式で予測結果を出力.   
+`sh predict.sh`.
+前処理済みのデータ（１カテゴリ）を入力に，森羅2020の出力形式で予測結果を出力.
 ※ `model_path`はモデルファイルへのパスです．
 
 ### predict.shの例
