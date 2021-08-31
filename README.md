@@ -11,8 +11,6 @@
 ## 学習
 `sh train.sh`
 
-※ `model_path`はディレクトリです．validation setで最大精度のモデルと最終エポックのモデルを保存します．
-
 ### train.shの例
 ```bash
 python train.py \
@@ -23,12 +21,12 @@ python train.py \
     --bsz 32 \
     --epoch 50 \
     --grad_acc 1 \
-    --grad_clip 1.0 
+    --grad_clip 1.0
 ```
 
 ## 予測
-`sh predict.sh`.   
-前処理済みのデータ（１カテゴリ）を入力に，森羅2020の出力形式で予測結果を出力.   
+`sh predict.sh`.
+前処理済みのデータ（１カテゴリ）を入力に，森羅2020の出力形式で予測結果を出力.
 ※ `model_path`はモデルファイルへのパスです．
 
 ### predict.shの例
@@ -38,3 +36,10 @@ python predict.py \
     --model_path /path/to/model_file \
     --mode all
 ```
+
+
+## Reference
+- [NLP若手の会 (YANS) 第16回シンポジウム ハッカソン - NLP 若手の会](https://yans.anlp.jp/entry/yans2021hackathon)
+- [森羅2020-JPでNER入門 - うしのおちちの備忘録](https://kuroneko1259.hatenablog.com/entry/2021/08/12/163855)
+- [ujiuji1259/shinra-attribute-extraction (ベースライン)](https://github.com/ujiuji1259/shinra-attribute-extraction)
+- [リーダーボード](https://yans2021hackathon.pythonanywhere.com/)
