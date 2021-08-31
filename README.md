@@ -1,11 +1,12 @@
-# shinra-attribute-extraction
+# NLP若手の会 (YANS) 第16回シンポジウム ハッカソン Aチーム
 
-## データ
-SHINRA2020での [前処理済みデータ](http://shinra-project.info/shinra2020jp/data_download/) の森羅2020-JPタスクの学習・ターゲットデータ（トークナイズ済み, Mecab(IPA辞書)&BPE使用, 東北大BERT対応)を使用しています。
+- [NLP若手の会 (YANS) 第16回シンポジウム ハッカソン](https://yans.anlp.jp/entry/yans2021hackathon) におけるAチームのソースコードです。
+- 運営により公開された[BERTベースライン](https://github.com/ujiuji1259/shinra-attribute-extraction)を改修しています。
+- [リーダーボード](https://yans2021hackathon.pythonanywhere.com/)順位は1位、最終順位は2位でした
 
-## モデル
-事前学習済みモデルとして[東北大BERT](https://github.com/cl-tohoku/bert-japanese)を使用しています．
-BERTの上に属性ごとに独立した分類層を乗せています．
+## 取り組みの概要
+
+後ほど、[NLP若手の会のページ](https://yans.anlp.jp/)で当日の発表資料が公開されます。
 
 ## 学習
 `sh train.sh`
