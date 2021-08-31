@@ -2,7 +2,7 @@
 
 - [NLP若手の会 (YANS) 第16回シンポジウム ハッカソン](https://yans.anlp.jp/entry/yans2021hackathon) におけるAチームのソースコードです。
 - 運営により公開された[BERTベースライン](https://github.com/ujiuji1259/shinra-attribute-extraction)を改修しています。
-- [リーダーボード](https://yans2021hackathon.pythonanywhere.com/)順位は1位、最終順位は2位でした
+- [リーダーボード](https://yans2021hackathon.pythonanywhere.com/)順位は1位、最終順位は2位でした。
 
 ## 取り組みの概要
 
