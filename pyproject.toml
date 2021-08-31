@@ -7,6 +7,7 @@ authors = [
     "TakamotoDaiki",
     "nobu-g <ueda-n127@hotmail.co.jp>"
 ]
+license = "MIT"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.11"
