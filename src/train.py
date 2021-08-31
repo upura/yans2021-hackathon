@@ -2,20 +2,23 @@ import argparse
 import os
 from pathlib import Path
 from typing import List
+from collections import OrderedDict
 from datetime import datetime
+import _pickle as pickle
 
-import joblib
 import mlflow
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from seqeval.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
-from dataset import NerDataset, ShinraData, ner_collate_fn
+from dataset.shinra import ShinraData
+from dataset.ner import NerDataset, ner_collate_fn
+from dataset.pseudo import PseudoDataset
 from model import BertForMultilabelNER, create_pooler_matrix
 from predict import predict
 from util import decode_iob
@@ -51,6 +54,9 @@ def parse_arg() -> argparse.Namespace:
         "--input_path", type=str, help="Specify input path in SHINRA2020"
     )
     parser.add_argument(
+        "--pseudo_input_path", "-p", type=str, help="Specify input path in SHINRA2019"
+    )
+    parser.add_argument(
         "--save_path", type=str, help="Specify path to directory where trained checkpoints are saved"
     )
     parser.add_argument(
@@ -74,6 +80,12 @@ def parse_arg() -> argparse.Namespace:
     parser.add_argument(
         "--note", type=str, help="Specify attribute_list path in SHINRA2020"
     )
+    parser.add_argument(
+        "--bert", type=str, default="cl-tohoku/bert-base-japanese", help="Specify attribute_list path in SHINRA2020"
+    )
+    parser.add_argument(
+        "--initial_weight_path", type=str, help="Specify attribute_list path in SHINRA2020"
+    )
 
     return parser.parse_args()
 
@@ -85,6 +97,22 @@ def evaluate(model: nn.Module, dataset: NerDataset, attributes: List[str]):
 
     f1 = f1_score(total_trues, total_preds)
     return f1
+
+
+def load_shinra_datum(input_path: Path, category: str, mode: str) -> List[ShinraData]:
+    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
+    dataset_cache_dir.mkdir(exist_ok=True)
+    cache_path = dataset_cache_dir / f"{category}_{mode}_dataset.pkl"
+    if cache_path.exists():
+        print(f"Loading cached dataset from {cache_path}")
+        with cache_path.open(mode="rb") as f:
+            shinra_datum = pickle.load(f)
+    else:
+        print(f"Cached shinra_datum not found. Building one from {input_path}")
+        shinra_datum = ShinraData.from_shinra2020_format(input_path, mode=mode)
+        with cache_path.open(mode="wb") as f:
+            pickle.dump(shinra_datum, f)
+    return shinra_datum
 
 
 def train(
@@ -120,28 +148,19 @@ def train(
                 k: (v.to(device) if isinstance(v, torch.Tensor) else v)
                 for k, v in batch.items()
             }
-            input_ids = batch["input_ids"]  # (b, seq)
-            word_idxs = batch["word_idxs"]  # (b, word)
-            labels = batch["labels"]  # (b, seq, attr)
 
-            attention_mask = input_ids > 0
             pooling_matrix = create_pooler_matrix(
-                input_ids, word_idxs, pool_type="head"
-            ).to(device)
+                batch["input_ids"], batch["word_idxs"], pool_type="head"
+            ).to(device)  # (b, word, seq)
 
-            loss, output = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-                pooling_matrix=pooling_matrix,
-            )
+            loss, output = model(**batch, pooling_matrix=pooling_matrix)  # ,(b, word, attr, 3)
 
             if len(loss.size()) > 0:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
             loss.backward()
 
-            total_loss += loss.item() * input_ids.size(0)
+            total_loss += loss.item() * batch["input_ids"].size(0)
             mlflow.log_metric("Train batch loss", loss.item(), step=(e + 1) * step)
 
             bar.set_description(f"[Epoch] {e + 1}")
@@ -170,27 +189,30 @@ def train(
 def main():
     args = parse_arg()
 
-    bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
-    tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
+    bert = AutoModel.from_pretrained(args.bert)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert)
 
-    # dataset = [ShinraData(), ....]
-    category = Path(args.input_path).parts[-1]
-    dataset_cache_dir = Path(os.environ.get("SHINRA_CACHE_DIR", "../tmp"))
-    dataset_cache_dir.mkdir(exist_ok=True)
-    cache_path = dataset_cache_dir / f"{category}_train_dataset.pkl"
-    if cache_path.exists():
-        print(f"Loading cached dataset from {cache_path}")
-        shinra_datum = joblib.load(cache_path)
-    else:
-        print(f"Cached shinra_datum not found. Building one from {args.input_path}")
-        shinra_datum = ShinraData.from_shinra2020_format(Path(args.input_path), mode="train")
-        joblib.dump(shinra_datum, cache_path, compress=3)
+    input_path = Path(args.input_path)
+    category = input_path.parts[-1]
+    shinra_datum = load_shinra_datum(input_path, category, mode="train")
 
-    model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes))
+    model = BertForMultilabelNER(bert, len(shinra_datum[0].attributes), dropout=0.0)
+
+    if args.initial_weight_path:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        state_dict = torch.load(args.initial_weight_path, map_location=device)
+        model.load_state_dict(OrderedDict({k.replace("module.", ""): v for k, v in state_dict.items()}))
+        print(f"loaded initial weights from {args.initial_weight_path}")
+
 
     train_shinra_datum, valid_shinra_datum = train_test_split(shinra_datum, test_size=0.1)
     train_dataset = NerDataset.from_shinra(train_shinra_datum, tokenizer)
     valid_dataset = NerDataset.from_shinra(valid_shinra_datum, tokenizer)
+
+    if args.pseudo_input_path:
+        pseudo_shinra_datum = load_shinra_datum(input_path, category, mode="pseudo")
+        pseudo_train_dataset = PseudoDataset.from_shinra(pseudo_shinra_datum, args.pseudo_input_path, tokenizer)
+        train_dataset = ConcatDataset((train_dataset, pseudo_train_dataset))
 
     save_dir = Path(args.save_path).joinpath(
         f"{category}{datetime.now().strftime(r'%m%d_%H%M')}" +

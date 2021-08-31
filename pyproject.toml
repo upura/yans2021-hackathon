@@ -9,7 +9,7 @@ authors = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.11"
+python = ">=3.8,<3.11"
 numpy = "^1.21.2"
 scikit-learn = "^0.24.2"
 torch = "^1.9.0"
