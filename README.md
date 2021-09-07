@@ -6,7 +6,8 @@
 
 ## 取り組みの概要
 
-後ほど、[NLP若手の会のページ](https://yans.anlp.jp/)で当日の発表資料が公開されます。
+[発表資料](https://drive.google.com/file/d/1p-WtGY2N3loPJhTWA_O9vSgZkxqifd-L/view?usp=sharing)をご覧ください。
+公式の[開催報告](https://yans.anlp.jp/entry/yans2021report)では、全チームの発表資料が公開されています。
 
 ## 学習
 `sh train.sh`
@@ -36,7 +37,6 @@ python predict.py \
     --model_path /path/to/model_file \
     --mode all
 ```
-
 
 ## Reference
 - [NLP若手の会 (YANS) 第16回シンポジウム ハッカソン - NLP 若手の会](https://yans.anlp.jp/entry/yans2021hackathon)
